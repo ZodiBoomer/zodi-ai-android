@@ -1,23 +1,39 @@
 # Zodi AI Android
 
-Application Android officielle du projet **Zodi AI**.
+Application Android native de **Zodi AI**, connectée au moteur conversationnel hébergé sur Vercel.
 
-## Objectifs
-- Fournir une interface mobile de conversation avec Zodi AI.
-- Se connecter au moteur local ou distant selon la configuration et les autorisations.
-- Présenter les conversations, profils, contacts, messages, salons et appels dans une interface inspirée des usages de Discord, sans dépendre de Discord.
-- Exposer un centre de contrôle des permissions Android et des connexions.
-- Afficher l'activité, l'état de connexion et les possibilités de révocation.
+## Fonctionnalités
 
-## Principes de sécurité
-- Demander les permissions Android au moment où une fonctionnalité en a réellement besoin.
-- Expliquer clairement chaque permission avant la demande système.
-- Ne jamais contourner les mécanismes de sécurité Android.
-- Ne stocker aucun secret dans le dépôt.
-- Prévoir une révocation et un journal des actions sensibles.
+- Interface de chat native Android en français.
+- Connexion à l'API existante `https://zodi-ai-core.vercel.app`.
+- Vérification de l'état du serveur et de la configuration IA.
+- Historique local des conversations.
+- Aucun secret API dans l'application : les clés restent côté serveur.
+- Bouton de nouvelle conversation.
 
-## État initial
-Dépôt documentaire vide initialisé. Aucun code Android/Kotlin/Gradle n'a été inventé ou importé. La structure de l'application sera définie après validation des choix techniques.
+## Construire l'APK
 
-## Dépôt associé
-Le moteur et les API sont documentés dans https://github.com/ZodiBoomer/zodi-ai.
+Le workflow GitHub Actions **Build Zodi AI APK** compile automatiquement l'application à chaque modification Android sur `main`, ou manuellement depuis l'onglet Actions.
+
+1. Ouvrir l'onglet **Actions** du dépôt.
+2. Sélectionner **Build Zodi AI APK**.
+3. Lancer **Run workflow** si nécessaire.
+4. Télécharger l'artefact **zodi-ai-debug-apk** à la fin du build.
+5. Extraire `app-debug.apk), puis l'ouvrir sur Android pour l'installer.
+
+## Compilation locale
+
+Prérequis : JDK 17, Android SDK (API 35) et Gradle 8.9.
+
+```bash
+gradle --no-daemon :app:assembleDebug
+```
+
+APK générée : `app/build/outputs/apk/debug/app-debug.apk`.
+
+## Sécurité et limites
+
+- L'application ne contient aucune clé OpenAI/OpenRouter.
+- Les échanges utilisent HTTPS et l'API serveur existante.
+- L'historique est stocké dans les préférences privées de l'application sur l'appareil.
+- Cette première version est une APK de test/debug. Une version de publication signée devra être créée séparément avec une clé de signature privée conservée hors du dépôt.

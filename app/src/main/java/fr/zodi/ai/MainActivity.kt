@@ -80,6 +80,7 @@ private fun ZodiApp() {
     var busy by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf<Boolean?>(null) }
     var status by remember { mutableStateOf("Connexion au serveur…") }
+    var remoteConfig by remember { mutableStateOf(RemoteAppConfig()) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -215,6 +216,7 @@ private fun ZodiApp() {
                     Text("Zodi AI", color = TextMain, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text(remoteConfig.subtitle, color = TextMuted, fontSize = 12.sp)
                 }
+                TextButton(onClick = { scope.launch { refreshRemoteConfig() } }) { Text("Actualiser", color = TextMuted) }
                 TextButton(onClick = {
                     messages.clear()
                     messages.add(ChatMessage("assistant", "Nouvelle conversation. Je t'écoute !"))
@@ -230,7 +232,22 @@ private fun ZodiApp() {
                 Spacer(Modifier.width(9.dp))
                 Text(status, color = TextMuted, fontSize = 12.sp)
             }
-            Spacer(Modifier.height(12.dp))
+            if (remoteConfig.announcement.isNotBlank() && prefs.getString("dismissed_announcement", "") != remoteConfig.announcementVersion) {
+                Row(
+                    Modifier.fillMaxWidth().background(SurfaceAlt, RoundedCornerShape(14.dp)).padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Nouveauté", color = Color(0xFFB8AEFF), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        Text(remoteConfig.announcement, color = TextMain, fontSize = 13.sp, lineHeight = 18.sp)
+                    }
+                    TextButton(onClick = {
+                        prefs.edit().putString("dismissed_announcement", remoteConfig.announcementVersion).apply()
+                        remoteConfig = remoteConfig.copy(announcement = "")
+                    }) { Text("OK", color = TextMuted) }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 state = listState,

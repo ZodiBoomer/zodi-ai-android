@@ -216,7 +216,7 @@ private fun ZodiApp() {
                     Text("Zodi AI", color = TextMain, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text(remoteConfig.subtitle, color = TextMuted, fontSize = 12.sp)
                 }
-                TextButton(onClick = { scope.launch { refreshRemoteConfig() } }) { Text("Actualiser", color = TextMuted) }
+                TextButton(onClick = { scope.launch { refreshRemoteConfig() } }) { Text("Mettre à jour", color = TextMuted) }
                 TextButton(onClick = {
                     messages.clear()
                     messages.add(ChatMessage("assistant", "Nouvelle conversation. Je t'écoute !"))

@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -41,6 +42,13 @@ private val TextMuted = Color(0xFF9AA8C5)
 private val Green = Color(0xFF43D49A)
 
 data class ChatMessage(val role: String, val content: String)
+
+data class RemoteAppConfig(
+    val configVersion: String = "default",
+    val subtitle: String = "Ton assistant intelligent",
+    val announcement: String = "",
+    val announcementVersion: String = ""
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,6 +91,30 @@ private fun ZodiApp() {
         prefs.edit().putString("messages", array.toString()).apply()
     }
 
+    suspend fun refreshRemoteConfig() {
+        try {
+            val config = withContext(Dispatchers.IO) {
+                val connection = (URL("$API_BASE/api/mobile/config").openConnection() as HttpURLConnection)
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+                connection.setRequestProperty("Cache-Control", "no-cache")
+                try {
+                    val code = connection.responseCode
+                    if (code !in 200..299) throw Exception("Configuration distante indisponible ($code)")
+                    JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                } finally { connection.disconnect() }
+            }
+            remoteConfig = RemoteAppConfig(
+                configVersion = config.optString("configVersion", "default"),
+                subtitle = config.optString("subtitle", "Ton assistant intelligent"),
+                announcement = config.optString("announcement", ""),
+                announcementVersion = config.optString("announcementVersion", "")
+            )
+        } catch (_: Exception) {
+            // Keep the last known/default configuration if the server is temporarily unavailable.
+        }
+    }
+
     suspend fun checkHealth() {
         try {
             val result = withContext(Dispatchers.IO) {
@@ -102,7 +134,14 @@ private fun ZodiApp() {
         }
     }
 
-    LaunchedEffect(Unit) { checkHealth() }
+    LaunchedEffect(Unit) {
+        checkHealth()
+        refreshRemoteConfig()
+        while (true) {
+            delay(15 * 60 * 1000L)
+            refreshRemoteConfig()
+        }
+    }
     LaunchedEffect(messages.size, busy) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
@@ -174,7 +213,7 @@ private fun ZodiApp() {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Zodi AI", color = TextMain, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text("Ton assistant intelligent", color = TextMuted, fontSize = 12.sp)
+                    Text(remoteConfig.subtitle, color = TextMuted, fontSize = 12.sp)
                 }
                 TextButton(onClick = {
                     messages.clear()
@@ -241,7 +280,7 @@ private fun ZodiApp() {
                 ) { Text(if (busy) "…" else "Envoyer", fontWeight = FontWeight.SemiBold) }
             }
             Text(
-                "Tes conversations restent enregistrées sur cet appareil. Les clés API restent protégées sur le serveur.",
+                "Configuration distante v${remoteConfig.configVersion} · Tes conversations restent sur cet appareil. Les clés API restent sur le serveur.",
                 color = TextMuted,
                 fontSize = 10.sp,
                 lineHeight = 14.sp,

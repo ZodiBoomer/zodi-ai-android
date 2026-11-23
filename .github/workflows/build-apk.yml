@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Java 17
-        uses: actions/setup-java@ddc6b1a9e2e8e7a9e6c2f6e8b1d9e4f8f5b0d8a1
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"

@@ -42,6 +42,49 @@ private val TextMuted = Color(0xFF9AA8C5)
 private val Green = Color(0xFF43D49A)
 
 data class ChatMessage(val role: String, val content: String)
+data class ChatConversation(
+    val id: String,
+    val title: String,
+    val updatedAt: Long,
+    val messages: List<ChatMessage>
+)
+
+private fun loadConversations(prefs: android.content.SharedPreferences): List<ChatConversation> {
+    val saved = prefs.getString("conversations", null)
+    if (!saved.isNullOrBlank()) {
+        runCatching {
+            val array = JSONArray(saved)
+            return (0 until array.length()).map { index ->
+                val item = array.getJSONObject(index)
+                val messageArray = item.optJSONArray("messages") ?: JSONArray()
+                val messages = (0 until messageArray.length()).map { messageIndex ->
+                    val message = messageArray.getJSONObject(messageIndex)
+                    ChatMessage(message.getString("role"), message.getString("content"))
+                }
+                ChatConversation(
+                    id = item.optString("id", index.toString()),
+                    title = item.optString("title", "Conversation"),
+                    updatedAt = item.optLong("updatedAt", 0L),
+                    messages = messages
+                )
+            }.sortedByDescending { it.updatedAt }
+        }
+    }
+
+    // Migration of the previous single-conversation format.
+    val legacy = prefs.getString("messages", null)
+    val migratedMessages = runCatching {
+        val array = JSONArray(legacy ?: "[]")
+        (0 until array.length()).map { index ->
+            val item = array.getJSONObject(index)
+            ChatMessage(item.getString("role"), item.getString("content"))
+        }
+    }.getOrDefault(emptyList())
+    val initial = migratedMessages.ifEmpty {
+        listOf(ChatMessage("assistant", "Salut ! Je suis Zodi. Que veux-tu faire aujourd'hui ?"))
+    }
+    return listOf(ChatConversation("conversation-${System.currentTimeMillis()}", "Nouvelle conversation", System.currentTimeMillis(), initial))
+}
 
 data class RemoteAppConfig(
     val configVersion: String = "default",
@@ -61,20 +104,45 @@ class MainActivity : ComponentActivity() {
 private fun ZodiApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("zodi_chat", android.content.Context.MODE_PRIVATE) }
-    val messages = remember {
-        mutableStateListOf<ChatMessage>().apply {
-            val raw = prefs.getString("messages", null)
-            if (raw != null) {
-                runCatching {
-                    val array = JSONArray(raw)
-                    for (i in 0 until array.length()) {
-                        val item = array.getJSONObject(i)
-                        add(ChatMessage(item.getString("role"), item.getString("content")))
-                    }
-                }
+    var conversations by remember { mutableStateOf(loadConversations(prefs)) }
+    var activeConversationId by remember { mutableStateOf(conversations.first().id) }
+    var showConversationHistory by remember { mutableStateOf(false) }
+    val messages = conversations.firstOrNull { it.id == activeConversationId }?.messages.orEmpty()
+
+    fun persist() {
+        val array = JSONArray()
+        conversations.forEach { conversation ->
+            val messageArray = JSONArray()
+            conversation.messages.forEach { message ->
+                messageArray.put(JSONObject().put("role", message.role).put("content", message.content))
             }
-            if (isEmpty()) add(ChatMessage("assistant", "Salut ! Je suis Zodi. Que veux-tu faire aujourd'hui ?"))
+            array.put(JSONObject()
+                .put("id", conversation.id)
+                .put("title", conversation.title)
+                .put("updatedAt", conversation.updatedAt)
+                .put("messages", messageArray))
         }
+        prefs.edit().putString("conversations", array.toString()).remove("messages").apply()
+    }
+
+    fun updateActiveConversation(transform: (ChatConversation) -> ChatConversation) {
+        conversations = conversations.map { conversation ->
+            if (conversation.id == activeConversationId) transform(conversation) else conversation
+        }.sortedByDescending { it.updatedAt }
+        persist()
+    }
+
+    fun startNewConversation() {
+        val id = "conversation-${System.currentTimeMillis()}"
+        val conversation = ChatConversation(
+            id = id,
+            title = "Nouvelle conversation",
+            updatedAt = System.currentTimeMillis(),
+            messages = listOf(ChatMessage("assistant", "Nouvelle conversation. Je t'écoute !"))
+        )
+        conversations = listOf(conversation) + conversations
+        activeConversationId = id
+        persist()
     }
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -83,14 +151,6 @@ private fun ZodiApp() {
     var remoteConfig by remember { mutableStateOf(RemoteAppConfig()) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-
-    fun persist() {
-        val array = JSONArray()
-        messages.forEach { item ->
-            array.put(JSONObject().put("role", item.role).put("content", item.content))
-        }
-        prefs.edit().putString("messages", array.toString()).apply()
-    }
 
     suspend fun refreshRemoteConfig() {
         try {
@@ -150,11 +210,18 @@ private fun ZodiApp() {
     fun sendMessage() {
         val text = input.trim()
         if (text.isEmpty() || busy) return
-        val history = messages.toList().takeLast(10)
-        messages.add(ChatMessage("user", text))
+        val history = messages.takeLast(10)
+        updateActiveConversation { conversation ->
+            val updatedMessages = conversation.messages + ChatMessage("user", text)
+            val firstUserMessage = updatedMessages.firstOrNull { it.role == "user" }?.content.orEmpty()
+            conversation.copy(
+                title = firstUserMessage.take(34).ifBlank { "Nouvelle conversation" },
+                updatedAt = System.currentTimeMillis(),
+                messages = updatedMessages
+            )
+        }
         input = ""
         busy = true
-        persist()
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
@@ -178,16 +245,15 @@ private fun ZodiApp() {
                     if (code !in 200..299) throw Exception(json.optString("error", "Erreur serveur ($code)"))
                     json.optString("reply").ifBlank { throw Exception("Zodi n'a pas renvoyé de réponse.") }
                 }
-                messages.add(ChatMessage("assistant", result))
+                updateActiveConversation { it.copy(updatedAt = System.currentTimeMillis(), messages = it.messages + ChatMessage("assistant", result)) }
                 connected = true
                 status = "En ligne · réponse reçue"
             } catch (error: Exception) {
-                messages.add(ChatMessage("assistant", error.message ?: "Impossible de contacter Zodi. Réessaie."))
+                updateActiveConversation { it.copy(updatedAt = System.currentTimeMillis(), messages = it.messages + ChatMessage("assistant", error.message ?: "Impossible de contacter Zodi. Réessaie.")) }
                 connected = false
                 status = "Échec de la requête"
             } finally {
                 busy = false
-                persist()
             }
         }
     }
@@ -203,19 +269,31 @@ private fun ZodiApp() {
     ) {
         Column(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF111A32), Background)))
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .imePadding()
                 .padding(horizontal = 16.dp)
         ) {
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Box(
-                    Modifier.size(48.dp).background(Brush.linearGradient(listOf(Purple, Color(0xFF20C5C8))), RoundedCornerShape(16.dp)),
+                    Modifier.size(46.dp).background(Brush.linearGradient(listOf(Purple, Color(0xFF20C5C8))), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
-                ) { Text("✦", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold) }
+                ) { Text("✦", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold) }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Zodi AI", color = TextMain, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text(remoteConfig.subtitle, color = TextMuted, fontSize = 12.sp)
+                    Text("Zodi AI", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(remoteConfig.subtitle, color = TextMuted, fontSize = 12.sp, maxLines = 1)
                 }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = { showConversationHistory = true }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 4.dp)) {
+                    Text("Conversations", color = TextMuted, fontSize = 12.sp, maxLines = 1)
+                }
+                Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
                     scope.launch {
                         refreshRemoteConfig()
@@ -232,12 +310,10 @@ private fun ZodiApp() {
                             status = "Mise à jour impossible · ${error.message ?: "erreur inconnue"}"
                         }
                     }
-                }) { Text("Mettre à jour", color = TextMuted) }
-                TextButton(onClick = {
-                    messages.clear()
-                    messages.add(ChatMessage("assistant", "Nouvelle conversation. Je t'écoute !"))
-                    persist()
-                }) { Text("Nouveau", color = TextMuted) }
+                }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 4.dp)) { Text("Mettre à jour", color = TextMuted, fontSize = 12.sp, maxLines = 1) }
+                TextButton(onClick = { startNewConversation() }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 4.dp)) {
+                    Text("Nouveau", color = TextMuted, fontSize = 12.sp, maxLines = 1)
+                }
             }
             Spacer(Modifier.height(16.dp))
             Row(
@@ -312,6 +388,57 @@ private fun ZodiApp() {
                     contentPadding = PaddingValues(horizontal = 17.dp, vertical = 12.dp)
                 ) { Text(if (busy) "…" else "Envoyer", fontWeight = FontWeight.SemiBold) }
             }
+
+            if (showConversationHistory) {
+                AlertDialog(
+                    onDismissRequest = { showConversationHistory = false },
+                    containerColor = Surface,
+                    title = { Text("Tes conversations", color = TextMain) },
+                    text = {
+                        if (conversations.isEmpty()) {
+                            Text("Aucune conversation enregistrée.", color = TextMuted)
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                items(conversations, key = { it.id }) { conversation ->
+                                    val preview = conversation.messages.lastOrNull()?.content.orEmpty()
+                                    TextButton(
+                                        onClick = {
+                                            activeConversationId = conversation.id
+                                            showConversationHistory = false
+                                            input = ""
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                                    ) {
+                                        Column(Modifier.fillMaxWidth()) {
+                                            Text(
+                                                conversation.title,
+                                                color = if (conversation.id == activeConversationId) Color(0xFFB8AEFF) else TextMain,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1
+                                            )
+                                            Text(preview, color = TextMuted, fontSize = 11.sp, maxLines = 2)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showConversationHistory = false
+                            startNewConversation()
+                        }) { Text("Nouvelle conversation") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showConversationHistory = false }) { Text("Fermer") }
+                    }
+                )
+            }
+
             Text(
                 "Configuration distante v${remoteConfig.configVersion} · Tes conversations restent sur cet appareil. Les clés API restent sur le serveur.",
                 color = TextMuted,

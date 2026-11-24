@@ -273,7 +273,7 @@ private fun ZodiApp() {
                 .imePadding()
                 .padding(horizontal = 16.dp)
         ) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(20.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Box(
                     Modifier.size(46.dp).background(Brush.linearGradient(listOf(Purple, Color(0xFF20C5C8))), RoundedCornerShape(16.dp)),
@@ -290,8 +290,12 @@ private fun ZodiApp() {
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = { showConversationHistory = true }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 4.dp)) {
-                    Text("Conversations", color = TextMuted, fontSize = 12.sp, maxLines = 1)
+                TextButton(
+                    onClick = { showConversationHistory = true },
+                    modifier = Modifier.background(SurfaceAlt, RoundedCornerShape(12.dp)),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text("☰ Historique (${conversations.size})", color = TextMain, fontSize = 12.sp, maxLines = 1)
                 }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
@@ -322,7 +326,7 @@ private fun ZodiApp() {
             ) {
                 Box(Modifier.size(8.dp).background(if (connected == true) Green else Color(0xFFF4B942), CircleShape))
                 Spacer(Modifier.width(9.dp))
-                Text(status, color = TextMuted, fontSize = 12.sp)
+                Text(status, color = TextMuted, fontSize = 12.sp, maxLines = 2, lineHeight = 17.sp)
             }
             if (remoteConfig.announcement.isNotBlank() && prefs.getString("dismissed_announcement", "") != remoteConfig.announcementVersion) {
                 Row(
@@ -353,7 +357,7 @@ private fun ZodiApp() {
                             color = TextMain,
                             fontSize = 15.sp,
                             lineHeight = 22.sp,
-                            modifier = Modifier.widthIn(max = 320.dp)
+                            modifier = Modifier.fillMaxWidth(0.88f).widthIn(max = 520.dp)
                                 .background(if (message.role == "user") Color(0xFF5548B8) else SurfaceAlt, RoundedCornerShape(18.dp))
                                 .padding(horizontal = 15.dp, vertical = 12.dp)
                         )

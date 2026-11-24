@@ -1,31 +1,19 @@
 name: Build and publish Zodi AI Android
-
 on:
   workflow_dispatch:
   repository_dispatch:
     types: [zodi-core-updated]
   pull_request:
     branches: [main]
-    paths:
-      - "app/**"
-      - "*.gradle.kts"
-      - "gradle.properties"
-      - ".github/workflows/build-apk.yml"
+    paths: ["app/**", "*.gradle.kts", "gradle.properties", ".github/workflows/build-apk.yml"]
   push:
     branches: [main, "feat/**"]
-    paths:
-      - "app/**"
-      - "*.gradle.kts"
-      - "gradle.properties"
-      - ".github/workflows/build-apk.yml"
-
+    paths: ["app/**", "*.gradle.kts", "gradle.properties", ".github/workflows/build-apk.yml"]
 permissions:
-  contents: write
-
+  contents: read
 concurrency:
   group: android-build-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   debug:
     name: Build and verify debug APK
@@ -49,10 +37,9 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
-
   signed-release:
-    name: Build signed release APK and publish
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'repository_dispatch'
+    name: Build, sign and publish production APK
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -63,23 +50,26 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Check release signing configuration
-        id: signing
+      - name: Require production signing and publishing secrets
         shell: bash
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
         run: |
-          if [[ -n "$ANDROID_KEYSTORE_BASE64" && -n "$ANDROID_KEYSTORE_PASSWORD" && -n "$ANDROID_KEY_ALIAS" && -n "$ANDROID_KEY_PASSWORD" ]]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Release APK not published: Android signing secrets are not all configured."
+          missing=()
+          [[ -n "$ANDROID_KEYSTORE_BASE64" ]] || missing+=("ANDROID_KEYSTORE_BASE64")
+          [[ -n "$ANDROID_KEYSTORE_PASSWORD" ]] || missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ -n "$ANDROID_KEY_ALIAS" ]] || missing+=("ANDROID_KEY_ALIAS")
+          [[ -n "$ANDROID_KEY_PASSWORD" ]] || missing+=("ANDROID_KEY_PASSWORD")
+          [[ -n "$PUBLIC_RELEASE_TOKEN" ]] || missing+=("PUBLIC_RELEASE_TOKEN")
+          if (( ${#missing[@]} )); then
+            printf '::error::Production Android release blocked. Configure these repository secrets: %s\n' "${missing[*]}"
+            exit 1
           fi
       - name: Restore signing keystore
-        if: steps.signing.outputs.available == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -87,7 +77,6 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/android-signing/release.jks"
           test -s "$RUNNER_TEMP/android-signing/release.jks"
       - name: Build signed release APK
-        if: steps.signing.outputs.available == 'true'
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/android-signing/release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -95,13 +84,11 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle --no-daemon :app:assembleRelease -PversionCode=${{ github.run_number }}
       - name: Verify signed release APK
-        if: steps.signing.outputs.available == 'true'
         shell: bash
         run: |
           latest_build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           "$latest_build_tools/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
       - name: Upload signed release APK
-        if: steps.signing.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Zodi-AI-Android-Release-${{ github.run_number }}
@@ -109,17 +96,12 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Publish signed APK to public releases repository
-        if: steps.signing.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
           RUN_NUMBER: ${{ github.run_number }}
           COMMIT_SHA: ${{ github.sha }}
         shell: bash
         run: |
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "::warning::APK built and signed, but not published. Configure PUBLIC_RELEASE_TOKEN with access only to ZodiBoomer/zodi-ai-releases-publique."
-            exit 0
-          fi
           apk="app/build/outputs/apk/release/app-release.apk"
           sha256="$(sha256sum "$apk" | awk '{print $1}')"
           version="1.0.$RUN_NUMBER"

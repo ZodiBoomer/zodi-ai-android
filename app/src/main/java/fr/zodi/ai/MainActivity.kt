@@ -216,7 +216,23 @@ private fun ZodiApp() {
                     Text("Zodi AI", color = TextMain, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text(remoteConfig.subtitle, color = TextMuted, fontSize = 12.sp)
                 }
-                TextButton(onClick = { scope.launch { refreshRemoteConfig() } }) { Text("Mettre à jour", color = TextMuted) }
+                TextButton(onClick = {
+                    scope.launch {
+                        refreshRemoteConfig()
+                        status = "Recherche d'une mise à jour…"
+                        try {
+                            val apk = withContext(Dispatchers.IO) { AppUpdater.downloadIfAvailable(context) }
+                            if (apk != null) {
+                                status = "Mise à jour téléchargée · confirmation Android requise"
+                                AppUpdater.install(context, apk)
+                            } else {
+                                status = "Zodi AI est déjà à jour"
+                            }
+                        } catch (error: Exception) {
+                            status = "Mise à jour impossible · ${error.message ?: "erreur inconnue"}"
+                        }
+                    }
+                }) { Text("Mettre à jour", color = TextMuted) }
                 TextButton(onClick = {
                     messages.clear()
                     messages.add(ChatMessage("assistant", "Nouvelle conversation. Je t'écoute !"))

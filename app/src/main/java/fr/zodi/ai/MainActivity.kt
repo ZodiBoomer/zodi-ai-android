@@ -3,6 +3,7 @@ package fr.zodi.ai
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.view.WindowCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -53,6 +54,10 @@ data class RemoteAppConfig(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
         setContent { ZodiApp() }
     }
 }
@@ -203,6 +208,8 @@ private fun ZodiApp() {
     ) {
         Column(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF111A32), Background)))
+                .safeDrawingPadding()
+                .imePadding()
                 .padding(horizontal = 16.dp)
         ) {
             Spacer(Modifier.height(18.dp))

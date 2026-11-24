@@ -4,11 +4,10 @@ Application Android native de **Zodi AI**, connectée au moteur conversationnel 
 
 ## Fonctionnalités
 
-- Interface de chat native Android en français.
-- Connexion à l'API existante `https://zodi-ai-core.vercel.app`.
-- Vérification de l'état du serveur et de la configuration IA.
-- Historique local des conversations.
-- Aucun secret API dans l'application : les clés restent côté serveur.
+- Application Android légère qui ouvre Zodi AI dans un onglet Chrome personnalisé.
+- Connexion Google réalisée dans le navigateur système, compatible avec les restrictions OAuth de Google.
+- Même interface responsive, mêmes conversations et même mémoire cloud que le site web.
+- Aucun secret API ni jeton de session stocké dans l'APK.
 - Bouton de nouvelle conversation.
 
 ## Construire l'APK
@@ -31,9 +30,10 @@ gradle --no-daemon :app:assembleDebug
 
 APK générée : `app/build/outputs/apk/debug/app-debug.apk`.
 
-## Sécurité et limites
+## Architecture et sécurité
 
-- L'application ne contient aucune clé OpenAI/OpenRouter.
-- Les échanges utilisent HTTPS et l'API serveur existante.
-- L'historique est stocké dans les préférences privées de l'application sur l'appareil.
-- Cette première version est une APK de test/debug. Une version de publication signée devra être créée séparément avec une clé de signature privée conservée hors du dépôt.
+- L'APK est un lanceur sécurisé vers l'application web partagée, pas un second moteur de chat.
+- Le Custom Tab utilise le navigateur système afin que Google OAuth ne soit pas bloqué comme dans un WebView intégré.
+- Les conversations et la mémoire sont enregistrées côté serveur et liées au compte Google.
+- Les échanges utilisent HTTPS ; aucune clé API ni aucun secret OAuth n'est intégré à l'APK.
+- Cette première version est une APK de test/debug. Une version de publication signée devra être créée séparément avec une clé privée conservée hors du dépôt.

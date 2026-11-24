@@ -3,7 +3,6 @@ package fr.zodi.ai
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -21,10 +20,14 @@ import java.security.MessageDigest
  */
 object AppUpdater {
     private const val RELEASES_API =
-        "https://api.github.com/repos/ZodiBoomer/zodi-ai-releases-publique/releases/latest"
+        "https://api.github.com/repos/ZodiBoomer/zodi-ai-releases-publique/releases?per_page=30"
 
     suspend fun downloadIfAvailable(context: Context): File? = withContext(Dispatchers.IO) {
-        val release = getJson(RELEASES_API)
+        val releases = getArray(RELEASES_API)
+        val release = (0 until releases.length())
+            .map { releases.getJSONObject(it) }
+            .firstOrNull { it.optString("tag_name").startsWith("android-v") }
+            ?: error("Aucune publication Android n'est encore disponible.")
         val assets = release.optJSONArray("assets") ?: error("La publication ne contient aucun fichier.")
         val manifestAsset = (0 until assets.length())
             .map { assets.getJSONObject(it) }
@@ -39,12 +42,8 @@ object AppUpdater {
             "Le manifeste de mise à jour est invalide."
         }
 
-        val currentVersion = if (Build.VERSION.SDK_INT >=  P) {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0"
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0"
-        }
+        @Suppress("DEPRECATION")
+        val currentVersion = context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0"
         if (compareVersions(version, currentVersion) <= 0) return@withContext null
 
         val apkAsset = (0 until assets.length())
@@ -90,6 +89,23 @@ object AppUpdater {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
+    }
+
+    private fun getArray(address: String): org.json.JSONArray {
+        val connection = URL(address).openConnection() as HttpURLConnection
+        connection.connectTimeout = 15000
+        connection.readTimeout = 20000
+        connection.setRequestProperty("Accept", "application/vnd.github+json")
+        connection.setRequestProperty("User-Agent", "Zodi-AI-Updater")
+        return try {
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream.bufferedReader().use { it.readText() }
+            if (code !in 200..299) error("GitHub a répondu HTTP $code.")
+            org.json.JSONArray(body)
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun getJson(address: String): JSONObject {
@@ -148,5 +164,4 @@ object AppUpdater {
         return 0
     }
 
-    private val P: Int get() = Build.VERSION_CODES.P
 }

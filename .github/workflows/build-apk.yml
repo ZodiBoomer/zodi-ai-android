@@ -2,6 +2,8 @@ name: Build and publish Zodi AI Android
 
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [zodi-core-updated]
   pull_request:
     branches: [main]
     paths:
@@ -50,7 +52,7 @@ jobs:
 
   signed-release:
     name: Build signed release APK and publish
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'repository_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -94,9 +96,10 @@ jobs:
         run: gradle --no-daemon :app:assembleRelease -PversionCode=${{ github.run_number }}
       - name: Verify signed release APK
         if: steps.signing.outputs.available == 'true'
+        shell: bash
         run: |
-          test -s app/build/outputs/apk/release/app-release.apk
-          jarsigner -verify -verbose -certs app/build/outputs/apk/release/app-release.apk
+          latest_build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$latest_build_tools/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
       - name: Upload signed release APK
         if: steps.signing.outputs.available == 'true'
         uses: actions/upload-artifact@v4
@@ -112,4 +115,5 @@ jobs:
           tag_name: android-v1.0.${{ github.run_number }}
           name: Zodi AI Android v1.0.${{ github.run_number }}
           generate_release_notes: true
+          overwrite_files: true
           files: app/build/outputs/apk/release/app-release.apk

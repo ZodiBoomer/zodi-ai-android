@@ -46,5 +46,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.browser:browser:1.8.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

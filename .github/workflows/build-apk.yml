@@ -108,12 +108,31 @@ jobs:
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 90
-      - name: Publish versioned GitHub release
+      - name: Publish signed APK to public releases repository
         if: steps.signing.outputs.available == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: android-v1.0.${{ github.run_number }}
-          name: Zodi AI Android v1.0.${{ github.run_number }}
-          generate_release_notes: true
-          overwrite_files: true
-          files: app/build/outputs/apk/release/app-release.apk
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+          RUN_NUMBER: ${{ github.run_number }}
+          COMMIT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::warning::APK built and signed, but not published. Configure PUBLIC_RELEASE_TOKEN with access only to ZodiBoomer/zodi-ai-releases-publique."
+            exit 0
+          fi
+          apk="app/build/outputs/apk/release/app-release.apk"
+          sha256="$(sha256sum "$apk" | awk '{print $1}')"
+          version="1.0.$RUN_NUMBER"
+          cat > latest-android.json <<EOF
+          {
+            "schemaVersion": 1,
+            "app": "Zodi AI",
+            "platform": "android-universal",
+            "version": "$version",
+            "commit": "$COMMIT_SHA",
+            "asset": "app-release.apk",
+            "sha256": "$sha256"
+          }
+          EOF
+          tag="android-v$version"
+          gh release create "$tag" "$apk" latest-android.json --repo ZodiBoomer/zodi-ai-releases-publique --title "Zodi AI Android $version" --notes "Signed Android release built from commit $COMMIT_SHA."

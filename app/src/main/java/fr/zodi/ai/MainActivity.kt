@@ -158,6 +158,7 @@ private fun ZodiApp() {
         persist()
     }
     var input by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("Connexion au serveur…") }
     var selectedImages by remember { mutableStateOf<List<ChatImage>>(emptyList()) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         val added = uris.take((4 - selectedImages.size).coerceAtLeast(0)).mapNotNull { uri ->
@@ -178,7 +179,6 @@ private fun ZodiApp() {
     }
     var busy by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf<Boolean?>(null) }
-    var status by remember { mutableStateOf("Connexion au serveur…") }
     var remoteConfig by remember { mutableStateOf(RemoteAppConfig()) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()

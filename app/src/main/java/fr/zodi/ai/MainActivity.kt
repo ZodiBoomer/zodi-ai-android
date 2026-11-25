@@ -59,10 +59,11 @@ data class ChatConversation(
 
 private fun loadConversations(context: android.content.Context, prefs: android.content.SharedPreferences): List<ChatConversation> {
     val conversationFile = java.io.File(context.filesDir, "conversations.json")
-    val saved = if (conversationFile.exists()) runCatching { conversationFile.readText() }.getOrNull() else prefs.getString("conversations", null)
+    val saved = runCatching { if (conversationFile.exists()) conversationFile.readText() else null }.getOrNull()
+        ?: prefs.getString("conversations", null)
     if (!conversationFile.exists() && !saved.isNullOrBlank()) {
-        runCatching { conversationFile.writeText(saved) }
-        prefs.edit().remove("conversations").apply()
+        val migrated = runCatching { conversationFile.writeText(saved); true }.getOrDefault(false)
+        if (migrated) prefs.edit().remove("conversations").apply()
     }
     if (!saved.isNullOrBlank()) {
         runCatching {
@@ -141,20 +142,25 @@ private fun ZodiApp() {
                 .put("updatedAt", conversation.updatedAt)
                 .put("messages", messageArray))
         }
+        val serialized = array.toString()
         val conversationFile = java.io.File(context.filesDir, "conversations.json")
         val temporaryFile = java.io.File(context.filesDir, "conversations.json.tmp")
-        temporaryFile.writeText(array.toString())
-        runCatching {
-            java.nio.file.Files.move(
-                temporaryFile.toPath(),
-                conversationFile.toPath(),
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                java.nio.file.StandardCopyOption.ATOMIC_MOVE
-            )
-        }.getOrElse {
-            java.nio.file.Files.move(temporaryFile.toPath(), conversationFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        }
-        prefs.edit().remove("conversations").remove("messages").apply()
+        val fileSaved = runCatching {
+            temporaryFile.writeText(serialized)
+            runCatching {
+                java.nio.file.Files.move(
+                    temporaryFile.toPath(),
+                    conversationFile.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE
+                )
+            }.getOrElse {
+                java.nio.file.Files.move(temporaryFile.toPath(), conversationFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+            true
+        }.getOrDefault(false)
+        if (fileSaved) prefs.edit().remove("conversations").remove("messages").apply()
+        else prefs.edit().putString("conversations", serialized).remove("messages").apply()
     }
 
     fun updateActiveConversation(transform: (ChatConversation) -> ChatConversation) {

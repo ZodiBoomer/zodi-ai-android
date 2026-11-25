@@ -49,7 +49,7 @@ private val TextMuted = Color(0xFF999999)
 private val Green = Color(0xFF10A37F)
 
 data class ChatImage(val dataUrl: String, val mimeType: String = "image/jpeg", val name: String = "Photo")
-data class ChatMessage(val role: String, val content: String, val images: List<ChatImage> = emptyList())
+data class ChatMessage(val role: String, val content: String, val images: List<ChatImage> = emptyList(), val choices: List<String> = emptyList())
 data class ChatConversation(
     val id: String,
     val title: String,
@@ -70,7 +70,7 @@ private fun loadConversations(prefs: android.content.SharedPreferences): List<Ch
                     ChatMessage(message.getString("role"), message.getString("content"), (0 until (message.optJSONArray("images")?.length() ?: 0)).map { imageIndex ->
                     val image = message.getJSONArray("images").getJSONObject(imageIndex)
                     ChatImage(image.getString("dataUrl"), image.optString("mimeType", "image/jpeg"), image.optString("name", "Photo"))
-                })
+                }, (0 until (message.optJSONArray("choices")?.length() ?: 0)).map { choiceIndex -> message.getJSONArray("choices").getString(choiceIndex) })
                 }
                 ChatConversation(
                     id = item.optString("id", index.toString()),
@@ -128,7 +128,7 @@ private fun ZodiApp() {
             conversation.messages.forEach { message ->
                 val imageArray = JSONArray()
                 message.images.forEach { image -> imageArray.put(JSONObject().put("dataUrl", image.dataUrl).put("mimeType", image.mimeType).put("name", image.name)) }
-                messageArray.put(JSONObject().put("role", message.role).put("content", message.content).put("images", imageArray))
+                messageArray.put(JSONObject().put("role", message.role).put("content", message.content).put("images", imageArray).put("choices", JSONArray(message.choices)))
             }
             array.put(JSONObject()
                 .put("id", conversation.id)
@@ -302,9 +302,12 @@ private fun ZodiApp() {
                     connection.disconnect()
                     val json = JSONObject(body)
                     if (code !in 200..299) throw Exception(json.optString("error", "Erreur serveur ($code)"))
-                    json.optString("reply").ifBlank { throw Exception("Zodi n'a pas renvoyé de réponse.") }
+                    json.optString("reply").ifBlank { throw Exception("Zodi n'a pas renvoyé de réponse.") } + "\u0000" + (0 until (json.optJSONArray("choices")?.length() ?: 0)).map { json.getJSONArray("choices").getString(it) }.joinToString("\u0001")
                 }
-                updateActiveConversation { it.copy(updatedAt = System.currentTimeMillis(), messages = it.messages + ChatMessage("assistant", result)) }
+                val parts = result.split("\u0000", limit = 2)
+                val replyText = parts.firstOrNull().orEmpty()
+                val quickChoices = parts.getOrNull(1)?.split("\u0001")?.filter { it.isNotBlank() }?.take(4).orEmpty()
+                updateActiveConversation { it.copy(updatedAt = System.currentTimeMillis(), messages = it.messages + ChatMessage("assistant", replyText, choices = quickChoices)) }
                 connected = true
                 status = "En ligne · réponse reçue"
             } catch (error: Exception) {
@@ -383,7 +386,7 @@ private fun ZodiApp() {
                 Modifier.fillMaxWidth().background(Surface, RoundedCornerShape(14.dp)).padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.size(8.dp).background(if (connected == true) Green else Color(0xFFF4B942), CircleShape))
+                Box(Modifier.size(8.dp).background(if (connected == true) Color(0xFF22C55E) else if (connected == false) Color(0xFFEF4444) else Color(0xFFF4B942), CircleShape))
                 Spacer(Modifier.width(9.dp))
                 Text(status, color = TextMuted, fontSize = 12.sp, maxLines = 2, lineHeight = 17.sp)
             }
@@ -425,6 +428,15 @@ private fun ZodiApp() {
                                 }
                             }
                             Text(message.content, color = TextMain, fontSize = 15.sp, lineHeight = 22.sp)
+                            if (message.choices.isNotEmpty()) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    message.choices.forEach { choice ->
+                                        OutlinedButton(onClick = { input = choice }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)) {
+                                            Text(choice, color = Color(0xFFB8E8CF), fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

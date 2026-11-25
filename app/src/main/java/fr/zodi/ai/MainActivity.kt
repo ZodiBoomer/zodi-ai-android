@@ -1,6 +1,9 @@
 package fr.zodi.ai
 
 import android.os.Bundle
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -193,6 +197,8 @@ private fun ZodiApp() {
         }
     }
     var busy by remember { mutableStateOf(false) }
+    var messageFeedback by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    val clipboard = remember { context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager }
     var connected by remember { mutableStateOf<Boolean?>(null) }
     var remoteConfig by remember { mutableStateOf(RemoteAppConfig()) }
     val scope = rememberCoroutineScope()
@@ -264,6 +270,72 @@ private fun ZodiApp() {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
+    fun copyResponse(content: String) {
+        clipboard.setPrimaryClip(ClipData.newPlainText("Réponse de Zodi AI", content))
+        status = "Réponse copiée"
+    }
+
+    fun shareResponse(content: String) {
+        runCatching {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, content)
+            }
+            context.startActivity(Intent.createChooser(intent, "Partager la réponse"))
+        }.onFailure { status = "Partage indisponible" }
+    }
+
+    fun regenerateResponse(messageIndex: Int) {
+        if (busy || messageIndex !in messages.indices) return
+        val userIndex = messages.subList(0, messageIndex).indexOfLast { it.role == "user" }
+        if (userIndex < 0) return
+        val prompt = messages[userIndex]
+        val history = messages.take(userIndex).takeLast(10)
+        busy = true
+        status = "Régénération de la réponse…"
+        updateActiveConversation { conversation ->
+            conversation.copy(messages = conversation.messages.take(userIndex + 1), updatedAt = System.currentTimeMillis())
+        }
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val connection = (URL("$API_BASE/api/chat").openConnection() as HttpURLConnection)
+                    connection.requestMethod = "POST"
+                    connection.connectTimeout = 15000
+                    connection.readTimeout = 70000
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    val historyJson = JSONArray()
+                    history.forEach { item ->
+                        val priorImages = JSONArray()
+                        item.images.forEach { image -> priorImages.put(JSONObject().put("dataUrl", image.dataUrl).put("mimeType", image.mimeType)) }
+                        historyJson.put(JSONObject().put("role", item.role).put("content", item.content).put("images", priorImages))
+                    }
+                    val imageJson = JSONArray()
+                    prompt.images.forEach { image -> imageJson.put(JSONObject().put("dataUrl", image.dataUrl).put("mimeType", image.mimeType)) }
+                    val payload = JSONObject().put("message", prompt.content).put("history", historyJson).put("images", imageJson)
+                    connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    val code = connection.responseCode
+                    val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                    val body = stream.bufferedReader().use { it.readText() }
+                    connection.disconnect()
+                    val json = JSONObject(body)
+                    if (code !in 200..299) throw Exception(json.optString("error", "Erreur serveur ($code)"))
+                    json.optString("reply").ifBlank { throw Exception("Zodi n'a pas renvoyé de réponse.") }
+                }
+                updateActiveConversation { it.copy(updatedAt = System.currentTimeMillis(), messages = it.messages + ChatMessage("assistant", result)) }
+                status = "Réponse régénérée"
+                connected = true
+            } catch (error: Exception) {
+                updateActiveConversation { it.copy(updatedAt = System.currentTimeMillis(), messages = it.messages + ChatMessage("assistant", error.message ?: "Impossible de régénérer la réponse.")) }
+                status = "Échec de la régénération"
+                connected = false
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     fun sendMessage() {
         val text = input.trim()
         if ((text.isEmpty() && selectedImages.isEmpty()) || busy) return
@@ -326,6 +398,13 @@ private fun ZodiApp() {
                 busy = false
             }
         }
+    }
+
+    val statusColor = when {
+        Regex("échec|erreur|impossible|indisponible", RegexOption.IGNORE_CASE).containsMatchIn(status) -> Color(0xFFEF5350)
+        Regex("attention|confirmation|mise à jour disponible", RegexOption.IGNORE_CASE).containsMatchIn(status) -> Color(0xFFFFB74D)
+        connected == true -> Color(0xFF4CAF50)
+        else -> Color(0xFF64B5F6)
     }
 
     MaterialTheme(
@@ -394,7 +473,7 @@ private fun ZodiApp() {
                 Modifier.fillMaxWidth().background(Surface, RoundedCornerShape(14.dp)).padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.size(8.dp).background(if (connected == true) Green else Color(0xFFF4B942), CircleShape))
+                Box(Modifier.size(8.dp).background(statusColor, CircleShape))
                 Spacer(Modifier.width(9.dp))
                 Text(status, color = TextMuted, fontSize = 12.sp, maxLines = 2, lineHeight = 17.sp)
             }
@@ -420,22 +499,43 @@ private fun ZodiApp() {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
-                items(messages) { message ->
+                itemsIndexed(messages) { messageIndex, message ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.role == "user") Arrangement.End else Arrangement.Start) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(0.88f).widthIn(max = 520.dp)
-                                .background(if (message.role == "user") Color(0xFF303030) else SurfaceAlt, RoundedCornerShape(18.dp))
-                                .padding(horizontal = 15.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            message.images.forEach { image ->
-                                runCatching { Base64.decode(image.dataUrl.substringAfter("base64,"), Base64.DEFAULT) }.getOrNull()?.let { bytes ->
-                                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bitmap ->
-                                        Image(bitmap.asImageBitmap(), contentDescription = image.name, modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp))
+                        Column(Modifier.fillMaxWidth(0.9f).widthIn(max = 540.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth()
+                                    .background(if (message.role == "user") Color(0xFF303030) else SurfaceAlt, RoundedCornerShape(18.dp))
+                                    .padding(horizontal = 15.dp, vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                message.images.forEach { image ->
+                                    runCatching { Base64.decode(image.dataUrl.substringAfter("base64,"), Base64.DEFAULT) }.getOrNull()?.let { bytes ->
+                                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bitmap ->
+                                            Image(bitmap.asImageBitmap(), contentDescription = image.name, modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp))
+                                        }
+                                    }
+                                }
+                                Text(message.content, color = TextMain, fontSize = 15.sp, lineHeight = 22.sp)
+                            }
+                            if (message.role == "assistant" && messageIndex > 0) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = { copyResponse(message.content) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
+                                        Text("▢ Copier", color = TextMuted, fontSize = 11.sp)
+                                    }
+                                    TextButton(onClick = { messageFeedback = messageFeedback + (messageIndex to if (messageFeedback[messageIndex] == "like") "" else "like") }, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
+                                        Text(if (messageFeedback[messageIndex] == "like") "👍" else "👍", color = if (messageFeedback[messageIndex] == "like") Color(0xFF4CAF50) else TextMuted, fontSize = 12.sp)
+                                    }
+                                    TextButton(onClick = { messageFeedback = messageFeedback + (messageIndex to if (messageFeedback[messageIndex] == "dislike") "" else "dislike") }, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
+                                        Text("👎", color = if (messageFeedback[messageIndex] == "dislike") Color(0xFFEF5350) else TextMuted, fontSize = 12.sp)
+                                    }
+                                    TextButton(onClick = { regenerateResponse(messageIndex) }, enabled = !busy, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
+                                        Text("↻", color = TextMuted, fontSize = 17.sp)
+                                    }
+                                    TextButton(onClick = { shareResponse(message.content) }, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
+                                        Text("↗", color = TextMuted, fontSize = 16.sp)
                                     }
                                 }
                             }
-                            Text(message.content, color = TextMain, fontSize = 15.sp, lineHeight = 22.sp)
                         }
                     }
                 }

@@ -440,13 +440,6 @@ private fun ZodiApp() {
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(
-                    onClick = { historyQuery = ""; showConversationHistory = true },
-                    modifier = Modifier.background(SurfaceAlt, RoundedCornerShape(12.dp)),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Text("Historique (${conversations.size})", color = TextMain, fontSize = 12.sp, maxLines = 1)
-                }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
                     scope.launch {

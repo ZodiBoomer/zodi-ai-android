@@ -118,6 +118,7 @@ private fun ZodiApp() {
     var conversations by remember { mutableStateOf(loadConversations(prefs)) }
     var activeConversationId by remember { mutableStateOf(conversations.first().id) }
     var showConversationHistory by remember { mutableStateOf(false) }
+    var historyQuery by remember { mutableStateOf("") }
     val messages = conversations.firstOrNull { it.id == activeConversationId }?.messages.orEmpty()
 
     fun persist() {
@@ -161,8 +162,12 @@ private fun ZodiApp() {
     var status by remember { mutableStateOf("Connexion au serveur…") }
     var selectedImages by remember { mutableStateOf<List<ChatImage>>(emptyList()) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        val added = uris.take((4 - selectedImages.size).coerceAtLeast(0)).mapNotNull { uri ->
-            runCatching {
+        val added = mutableListOf<ChatImage>()
+        var totalBytes = selectedImages.sumOf { image ->
+            runCatching { Base64.decode(image.dataUrl.substringAfter("base64,"), Base64.DEFAULT).size }.getOrDefault(0)
+        }
+        for (uri in uris.take((4 - selectedImages.size).coerceAtLeast(0))) {
+            val image = runCatching {
                 val source = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: return@runCatching null
                 val scale = minOf(1f, 1600f / maxOf(source.width, source.height))
                 val bitmap = if (scale < 1f) Bitmap.createScaledBitmap(source, (source.width * scale).toInt().coerceAtLeast(1), (source.height * scale).toInt().coerceAtLeast(1), true) else source
@@ -171,11 +176,21 @@ private fun ZodiApp() {
                 bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
                 while (output.size() > 680 * 1024 && quality > 45) { output.reset(); quality -= 8; bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output) }
                 if (output.size() > 700 * 1024) return@runCatching null
+                if (totalBytes + output.size() > 2 * 1024 * 1024) {
+                    status = "Les photos jointes ne doivent pas dépasser 2 Mo au total."
+                    return@runCatching null
+                }
                 ChatImage("data:image/jpeg;base64," + Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP), "image/jpeg", uri.lastPathSegment ?: "Photo")
             }.getOrNull()
+            if (image != null) {
+                totalBytes += Base64.decode(image.dataUrl.substringAfter("base64,"), Base64.DEFAULT).size
+                added.add(image)
+            }
         }
         selectedImages = selectedImages + added
-        if (uris.size > added.size) status = "Certaines photos dépassent la limite de taille ou le maximum de 4."
+        if (uris.size > added.size && status != "Les photos jointes ne doivent pas dépasser 2 Mo au total.") {
+            status = "Certaines photos dépassent la limite de taille ou le maximum de 4."
+        }
     }
     var busy by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf<Boolean?>(null) }
@@ -243,6 +258,8 @@ private fun ZodiApp() {
         if ((text.isEmpty() && selectedImages.isEmpty()) || busy) return
         val attachments = selectedImages
         val history = messages.takeLast(10)
+        val latestImageMessageIndex = if (attachments.isEmpty()) history.indexOfLast { it.images.isNotEmpty() } else -1
+        val requestHistory = history.mapIndexed { index, message -> if (index == latestImageMessageIndex) message else message.copy(images = emptyList()) }
         updateActiveConversation { conversation ->
             val updatedMessages = conversation.messages + ChatMessage("user", text.ifBlank { "Analyse les photos jointes." }, attachments)
             val firstUserMessage = updatedMessages.firstOrNull { it.role == "user" }?.content.orEmpty()
@@ -265,8 +282,15 @@ private fun ZodiApp() {
                     connection.doOutput = true
                     connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
                     val historyJson = JSONArray()
-                    history.filter { it.role == "user" || it.role == "assistant" }.forEach {
-                        historyJson.put(JSONObject().put("role", it.role).put("content", it.content))
+                    requestHistory.filter { it.role == "user" || it.role == "assistant" }.forEach { message ->
+                        val priorImages = JSONArray()
+                        message.images.forEach { image ->
+                            priorImages.put(JSONObject().put("dataUrl", image.dataUrl).put("mimeType", image.mimeType))
+                        }
+                        historyJson.put(JSONObject()
+                            .put("role", message.role)
+                            .put("content", message.content)
+                            .put("images", priorImages))
                     }
                     val imageJson = JSONArray()
                     attachments.forEach { image -> imageJson.put(JSONObject().put("dataUrl", image.dataUrl).put("mimeType", image.mimeType)) }
@@ -326,7 +350,7 @@ private fun ZodiApp() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(
-                    onClick = { showConversationHistory = true },
+                    onClick = { historyQuery = ""; showConversationHistory = true },
                     modifier = Modifier.background(SurfaceAlt, RoundedCornerShape(12.dp)),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
@@ -450,16 +474,31 @@ private fun ZodiApp() {
                 AlertDialog(
                     onDismissRequest = { showConversationHistory = false },
                     containerColor = Surface,
-                    title = { Text("Tes conversations", color = TextMain) },
+                    title = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Tes conversations", color = TextMain)
+                            OutlinedTextField(
+                                value = historyQuery,
+                                onValueChange = { historyQuery = it },
+                                placeholder = { Text("Rechercher…") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
                     text = {
-                        if (conversations.isEmpty()) {
-                            Text("Aucune conversation enregistrée.", color = TextMuted)
+                        val filteredConversations = conversations.filter { conversation ->
+                            conversation.title.contains(historyQuery, ignoreCase = true) ||
+                                conversation.messages.any { it.content.contains(historyQuery, ignoreCase = true) }
+                        }
+                        if (filteredConversations.isEmpty()) {
+                            Text(if (conversations.isEmpty()) "Aucune conversation enregistrée." else "Aucun résultat.", color = TextMuted)
                         } else {
                             LazyColumn(
                                 modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                items(conversations, key = { it.id }) { conversation ->
+                                items(filteredConversations, key = { it.id }) { conversation ->
                                     val preview = conversation.messages.lastOrNull()?.content.orEmpty()
                                     TextButton(
                                         onClick = {

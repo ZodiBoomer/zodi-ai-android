@@ -3,6 +3,13 @@ package fr.zodi.ai
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,7 +48,8 @@ private val TextMain = Color(0xFFECECEC)
 private val TextMuted = Color(0xFF999999)
 private val Green = Color(0xFF10A37F)
 
-data class ChatMessage(val role: String, val content: String)
+data class ChatImage(val dataUrl: String, val mimeType: String = "image/jpeg", val name: String = "Photo")
+data class ChatMessage(val role: String, val content: String, val images: List<ChatImage> = emptyList())
 data class ChatConversation(
     val id: String,
     val title: String,
@@ -59,7 +67,10 @@ private fun loadConversations(prefs: android.content.SharedPreferences): List<Ch
                 val messageArray = item.optJSONArray("messages") ?: JSONArray()
                 val messages = (0 until messageArray.length()).map { messageIndex ->
                     val message = messageArray.getJSONObject(messageIndex)
-                    ChatMessage(message.getString("role"), message.getString("content"))
+                    ChatMessage(message.getString("role"), message.getString("content"), (0 until (message.optJSONArray("images")?.length() ?: 0)).map { imageIndex ->
+                    val image = message.getJSONArray("images").getJSONObject(imageIndex)
+                    ChatImage(image.getString("dataUrl"), image.optString("mimeType", "image/jpeg"), image.optString("name", "Photo"))
+                })
                 }
                 ChatConversation(
                     id = item.optString("id", index.toString()),
@@ -114,7 +125,9 @@ private fun ZodiApp() {
         conversations.forEach { conversation ->
             val messageArray = JSONArray()
             conversation.messages.forEach { message ->
-                messageArray.put(JSONObject().put("role", message.role).put("content", message.content))
+                val imageArray = JSONArray()
+                message.images.forEach { image -> imageArray.put(JSONObject().put("dataUrl", image.dataUrl).put("mimeType", image.mimeType).put("name", image.name)) }
+                messageArray.put(JSONObject().put("role", message.role).put("content", message.content).put("images", imageArray))
             }
             array.put(JSONObject()
                 .put("id", conversation.id)
@@ -145,9 +158,27 @@ private fun ZodiApp() {
         persist()
     }
     var input by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("Connexion au serveur…") }
+    var selectedImages by remember { mutableStateOf<List<ChatImage>>(emptyList()) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        val added = uris.take((4 - selectedImages.size).coerceAtLeast(0)).mapNotNull { uri ->
+            runCatching {
+                val source = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: return@runCatching null
+                val scale = minOf(1f, 1600f / maxOf(source.width, source.height))
+                val bitmap = if (scale < 1f) Bitmap.createScaledBitmap(source, (source.width * scale).toInt().coerceAtLeast(1), (source.height * scale).toInt().coerceAtLeast(1), true) else source
+                val output = java.io.ByteArrayOutputStream()
+                var quality = 82
+                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
+                while (output.size() > 680 * 1024 && quality > 45) { output.reset(); quality -= 8; bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output) }
+                if (output.size() > 700 * 1024) return@runCatching null
+                ChatImage("data:image/jpeg;base64," + Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP), "image/jpeg", uri.lastPathSegment ?: "Photo")
+            }.getOrNull()
+        }
+        selectedImages = selectedImages + added
+        if (uris.size > added.size) status = "Certaines photos dépassent la limite de taille ou le maximum de 4."
+    }
     var busy by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf<Boolean?>(null) }
-    var status by remember { mutableStateOf("Connexion au serveur…") }
     var remoteConfig by remember { mutableStateOf(RemoteAppConfig()) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -209,10 +240,11 @@ private fun ZodiApp() {
 
     fun sendMessage() {
         val text = input.trim()
-        if (text.isEmpty() || busy) return
+        if ((text.isEmpty() && selectedImages.isEmpty()) || busy) return
+        val attachments = selectedImages
         val history = messages.takeLast(10)
         updateActiveConversation { conversation ->
-            val updatedMessages = conversation.messages + ChatMessage("user", text)
+            val updatedMessages = conversation.messages + ChatMessage("user", text.ifBlank { "Analyse les photos jointes." }, attachments)
             val firstUserMessage = updatedMessages.firstOrNull { it.role == "user" }?.content.orEmpty()
             conversation.copy(
                 title = firstUserMessage.take(34).ifBlank { "Nouvelle conversation" },
@@ -221,6 +253,7 @@ private fun ZodiApp() {
             )
         }
         input = ""
+        selectedImages = emptyList()
         busy = true
         scope.launch {
             try {
@@ -235,7 +268,9 @@ private fun ZodiApp() {
                     history.filter { it.role == "user" || it.role == "assistant" }.forEach {
                         historyJson.put(JSONObject().put("role", it.role).put("content", it.content))
                     }
-                    val payload = JSONObject().put("message", text).put("history", historyJson)
+                    val imageJson = JSONArray()
+                    attachments.forEach { image -> imageJson.put(JSONObject().put("dataUrl", image.dataUrl).put("mimeType", image.mimeType)) }
+                    val payload = JSONObject().put("message", text).put("history", historyJson).put("images", imageJson)
                     connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                     val code = connection.responseCode
                     val stream = if (code in 200..299) connection.inputStream else connection.errorStream
@@ -352,19 +387,34 @@ private fun ZodiApp() {
             ) {
                 items(messages) { message ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.role == "user") Arrangement.End else Arrangement.Start) {
-                        Text(
-                            message.content,
-                            color = TextMain,
-                            fontSize = 15.sp,
-                            lineHeight = 22.sp,
+                        Column(
                             modifier = Modifier.fillMaxWidth(0.88f).widthIn(max = 520.dp)
                                 .background(if (message.role == "user") Color(0xFF303030) else SurfaceAlt, RoundedCornerShape(18.dp))
-                                .padding(horizontal = 15.dp, vertical = 12.dp)
-                        )
+                                .padding(horizontal = 15.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            message.images.forEach { image ->
+                                runCatching { Base64.decode(image.dataUrl.substringAfter("base64,"), Base64.DEFAULT) }.getOrNull()?.let { bytes ->
+                                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bitmap ->
+                                        Image(bitmap.asImageBitmap(), contentDescription = image.name, modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp))
+                                    }
+                                }
+                            }
+                            Text(message.content, color = TextMain, fontSize = 15.sp, lineHeight = 22.sp)
+                        }
                     }
                 }
                 if (busy) item {
                     Text("Zodi réfléchit…", color = TextMuted, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
+                }
+            }
+            if (selectedImages.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    selectedImages.forEachIndexed { index, image ->
+                        TextButton(onClick = { selectedImages = selectedImages.filterIndexed { i, _ -> i != index } }) {
+                            Text("📷 ${index + 1} ×", color = TextMain, fontSize = 12.sp)
+                        }
+                    }
                 }
             }
             Row(
@@ -385,9 +435,12 @@ private fun ZodiApp() {
                     keyboardActions = KeyboardActions(onSend = { sendMessage() }),
                     enabled = !busy
                 )
+                TextButton(onClick = { imagePicker.launch("image/*") }, enabled = !busy && selectedImages.size < 4) {
+                    Text("＋", color = TextMain, fontSize = 22.sp)
+                }
                 Button(
                     onClick = { sendMessage() },
-                    enabled = input.isNotBlank() && !busy,
+                    enabled = (input.isNotBlank() || selectedImages.isNotEmpty()) && !busy,
                     shape = RoundedCornerShape(18.dp),
                     contentPadding = PaddingValues(horizontal = 17.dp, vertical = 12.dp)
                 ) { Text(if (busy) "…" else "Envoyer", fontWeight = FontWeight.SemiBold) }

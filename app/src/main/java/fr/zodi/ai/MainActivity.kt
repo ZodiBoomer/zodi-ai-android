@@ -33,13 +33,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 private const val API_BASE = "https://zodi-ai-core.vercel.app"
-private val Background = Color(0xFF090E1B)
-private val Surface = Color(0xFF111A2D)
-private val SurfaceAlt = Color(0xFF202D47)
-private val Purple = Color(0xFF7868F6)
-private val TextMain = Color(0xFFF2F5FF)
-private val TextMuted = Color(0xFF9BA9C3)
-private val Green = Color(0xFF42D49A)
+private val Background = Color(0xFF212121)
+private val Surface = Color(0xFF171717)
+private val SurfaceAlt = Color(0xFF303030)
+private val Purple = Color(0xFF10A37F)
+private val TextMain = Color(0xFFECECEC)
+private val TextMuted = Color(0xFF999999)
+private val Green = Color(0xFF10A37F)
 
 data class ChatMessage(val role: String, val content: String)
 data class ChatConversation(
@@ -268,7 +268,7 @@ private fun ZodiApp() {
         )
     ) {
         Column(
-            Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF17233A), Background)))
+            Modifier.fillMaxSize().background(Background)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .imePadding()
                 .padding(horizontal = 16.dp)
@@ -334,7 +334,7 @@ private fun ZodiApp() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Nouveauté", color = Color(0xFFB8AEFF), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        Text("Nouveauté", color = Color(0xFF10A37F), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                         Text(remoteConfig.announcement, color = TextMain, fontSize = 13.sp, lineHeight = 18.sp)
                     }
                     TextButton(onClick = {
@@ -358,7 +358,7 @@ private fun ZodiApp() {
                             fontSize = 15.sp,
                             lineHeight = 22.sp,
                             modifier = Modifier.fillMaxWidth(0.88f).widthIn(max = 520.dp)
-                                .background(if (message.role == "user") Color(0xFF5145B8) else SurfaceAlt, RoundedCornerShape(18.dp))
+                                .background(if (message.role == "user") Color(0xFF303030) else SurfaceAlt, RoundedCornerShape(18.dp))
                                 .padding(horizontal = 15.dp, vertical = 12.dp)
                         )
                     }
@@ -368,7 +368,7 @@ private fun ZodiApp() {
                 }
             }
             Row(
-                Modifier.fillMaxWidth().padding(vertical = 12.dp).background(Surface, RoundedCornerShape(18.dp)).padding(8.dp),
+                Modifier.fillMaxWidth().padding(vertical = 12.dp).background(Surface, RoundedCornerShape(24.dp)).padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 BasicTextField(
@@ -388,7 +388,7 @@ private fun ZodiApp() {
                 Button(
                     onClick = { sendMessage() },
                     enabled = input.isNotBlank() && !busy,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(18.dp),
                     contentPadding = PaddingValues(horizontal = 17.dp, vertical = 12.dp)
                 ) { Text(if (busy) "…" else "Envoyer", fontWeight = FontWeight.SemiBold) }
             }

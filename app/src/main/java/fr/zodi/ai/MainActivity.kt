@@ -425,14 +425,14 @@ private fun ZodiApp() {
         ) {
             Spacer(Modifier.height(20.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    Modifier.size(46.dp).background(Brush.linearGradient(listOf(Purple, Color(0xFF39C9D2))), RoundedCornerShape(16.dp)),
-                    contentAlignment = Alignment.Center
-                ) { Text("✦", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold) }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Zodi AI", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    Text(remoteConfig.subtitle, color = TextMuted, fontSize = 12.sp, maxLines = 1)
+                TextButton(
+                    onClick = { historyQuery = ""; showConversationHistory = true },
+                    modifier = Modifier.background(SurfaceAlt, RoundedCornerShape(50)),
+                    contentPadding = PaddingValues(horizontal = 15.dp, vertical = 8.dp)
+                ) { Text("☰", color = TextMain, fontSize = 18.sp) }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { startNewConversation() }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+                    Text("＋ Nouveau", color = TextMain, fontSize = 13.sp)
                 }
             }
             Row(
@@ -445,7 +445,7 @@ private fun ZodiApp() {
                     modifier = Modifier.background(SurfaceAlt, RoundedCornerShape(12.dp)),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Text("☰ Historique (${conversations.size})", color = TextMain, fontSize = 12.sp, maxLines = 1)
+                    Text("Historique (${conversations.size})", color = TextMain, fontSize = 12.sp, maxLines = 1)
                 }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
@@ -521,10 +521,10 @@ private fun ZodiApp() {
                             }
                             if (message.role == "assistant" && messageIndex > 0) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick = { copyResponse(message.content) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
-                                        Text("▢ Copier", color = TextMuted, fontSize = 11.sp)
+                                    TextButton(onClick = { copyResponse(message.content) }, contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)) {
+                                        Text("▢ Copier", color = TextMuted, fontSize = 10.sp)
                                     }
-                                    TextButton(onClick = { messageFeedback = messageFeedback + (messageIndex to if (messageFeedback[messageIndex] == "like") "" else "like") }, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
+                                    TextButton(onClick = { messageFeedback = messageFeedback + (messageIndex to if (messageFeedback[messageIndex] == "like") "" else "like") }, contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)) {
                                         Text(if (messageFeedback[messageIndex] == "like") "👍" else "👍", color = if (messageFeedback[messageIndex] == "like") Color(0xFF4CAF50) else TextMuted, fontSize = 12.sp)
                                     }
                                     TextButton(onClick = { messageFeedback = messageFeedback + (messageIndex to if (messageFeedback[messageIndex] == "dislike") "" else "dislike") }, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {

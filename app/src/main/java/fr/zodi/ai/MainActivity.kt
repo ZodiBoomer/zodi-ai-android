@@ -258,6 +258,8 @@ private fun ZodiApp() {
         if ((text.isEmpty() && selectedImages.isEmpty()) || busy) return
         val attachments = selectedImages
         val history = messages.takeLast(10)
+        val latestImageMessageIndex = if (attachments.isEmpty()) history.indexOfLast { it.images.isNotEmpty() } else -1
+        val requestHistory = history.mapIndexed { index, message -> if (index == latestImageMessageIndex) message else message.copy(images = emptyList()) }
         updateActiveConversation { conversation ->
             val updatedMessages = conversation.messages + ChatMessage("user", text.ifBlank { "Analyse les photos jointes." }, attachments)
             val firstUserMessage = updatedMessages.firstOrNull { it.role == "user" }?.content.orEmpty()
@@ -280,7 +282,7 @@ private fun ZodiApp() {
                     connection.doOutput = true
                     connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
                     val historyJson = JSONArray()
-                    history.filter { it.role == "user" || it.role == "assistant" }.forEach { message ->
+                    requestHistory.filter { it.role == "user" || it.role == "assistant" }.forEach { message ->
                         val priorImages = JSONArray()
                         message.images.forEach { image ->
                             priorImages.put(JSONObject().put("dataUrl", image.dataUrl).put("mimeType", image.mimeType))

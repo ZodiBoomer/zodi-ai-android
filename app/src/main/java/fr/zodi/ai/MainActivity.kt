@@ -57,8 +57,13 @@ data class ChatConversation(
     val messages: List<ChatMessage>
 )
 
-private fun loadConversations(prefs: android.content.SharedPreferences): List<ChatConversation> {
-    val saved = prefs.getString("conversations", null)
+private fun loadConversations(context: android.content.Context, prefs: android.content.SharedPreferences): List<ChatConversation> {
+    val conversationFile = java.io.File(context.filesDir, "conversations.json")
+    val saved = if (conversationFile.exists()) runCatching { conversationFile.readText() }.getOrNull() else prefs.getString("conversations", null)
+    if (!conversationFile.exists() && !saved.isNullOrBlank()) {
+        runCatching { conversationFile.writeText(saved) }
+        prefs.edit().remove("conversations").apply()
+    }
     if (!saved.isNullOrBlank()) {
         runCatching {
             val array = JSONArray(saved)
@@ -115,7 +120,7 @@ class MainActivity : ComponentActivity() {
 private fun ZodiApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("zodi_chat", android.content.Context.MODE_PRIVATE) }
-    var conversations by remember { mutableStateOf(loadConversations(prefs)) }
+    var conversations by remember { mutableStateOf(loadConversations(context, prefs)) }
     var activeConversationId by remember { mutableStateOf(conversations.first().id) }
     var showConversationHistory by remember { mutableStateOf(false) }
     var historyQuery by remember { mutableStateOf("") }
@@ -136,7 +141,20 @@ private fun ZodiApp() {
                 .put("updatedAt", conversation.updatedAt)
                 .put("messages", messageArray))
         }
-        prefs.edit().putString("conversations", array.toString()).remove("messages").apply()
+        val conversationFile = java.io.File(context.filesDir, "conversations.json")
+        val temporaryFile = java.io.File(context.filesDir, "conversations.json.tmp")
+        temporaryFile.writeText(array.toString())
+        runCatching {
+            java.nio.file.Files.move(
+                temporaryFile.toPath(),
+                conversationFile.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE
+            )
+        }.getOrElse {
+            java.nio.file.Files.move(temporaryFile.toPath(), conversationFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+        prefs.edit().remove("conversations").remove("messages").apply()
     }
 
     fun updateActiveConversation(transform: (ChatConversation) -> ChatConversation) {

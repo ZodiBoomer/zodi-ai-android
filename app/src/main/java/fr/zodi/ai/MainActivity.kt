@@ -14,6 +14,7 @@ import android.util.Base64
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,7 +48,7 @@ private const val API_BASE = "https://zodi-ai-core.vercel.app"
 private val Background = Color(0xFF212121)
 private val Surface = Color(0xFF171717)
 private val SurfaceAlt = Color(0xFF303030)
-private val Purple = Color(0xFF10A37F)
+private val Purple = Color(0xFF3B82F6)
 private val TextMain = Color(0xFFECECEC)
 private val TextMuted = Color(0xFF999999)
 private val Green = Color(0xFF10A37F)
@@ -504,8 +505,9 @@ private fun ZodiApp() {
                         Column(Modifier.fillMaxWidth(0.9f).widthIn(max = 540.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Column(
                                 modifier = Modifier.fillMaxWidth()
-                                    .background(if (message.role == "user") Color(0xFF303030) else SurfaceAlt, RoundedCornerShape(18.dp))
-                                    .padding(horizontal = 15.dp, vertical = 12.dp),
+                                    .background(if (message.role == "user") Color(0xFF263B63) else Color.Transparent, RoundedCornerShape(22.dp))
+                                    .border(if (message.role == "user") 1.dp else 0.dp, if (message.role == "user") Color(0xFF3B82F6) else Color.Transparent, RoundedCornerShape(22.dp))
+                                    .padding(horizontal = if (message.role == "user") 15.dp else 0.dp, vertical = if (message.role == "user") 12.dp else 4.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 message.images.forEach { image ->
@@ -553,7 +555,7 @@ private fun ZodiApp() {
                 }
             }
             Row(
-                Modifier.fillMaxWidth().padding(vertical = 12.dp).background(Surface, RoundedCornerShape(24.dp)).padding(10.dp),
+                Modifier.fillMaxWidth().padding(vertical = 12.dp).background(Color(0xFF292D35), RoundedCornerShape(28.dp)).border(1.dp, Color(0xFF46536A), RoundedCornerShape(28.dp)).padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 BasicTextField(
@@ -571,14 +573,16 @@ private fun ZodiApp() {
                     enabled = !busy
                 )
                 TextButton(onClick = { imagePicker.launch("image/*") }, enabled = !busy && selectedImages.size < 4) {
-                    Text("＋", color = TextMain, fontSize = 22.sp)
+                    Text("＋", color = Color(0xFFDBEAFE), fontSize = 22.sp)
                 }
                 Button(
                     onClick = { sendMessage() },
                     enabled = (input.isNotBlank() || selectedImages.isNotEmpty()) && !busy,
-                    shape = RoundedCornerShape(18.dp),
-                    contentPadding = PaddingValues(horizontal = 17.dp, vertical = 12.dp)
-                ) { Text(if (busy) "…" else "Envoyer", fontWeight = FontWeight.SemiBold) }
+                    modifier = Modifier.size(42.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = Color.White, disabledContainerColor = Color(0xFF46536A)),
+                    contentPadding = PaddingValues(0.dp)
+                ) { Text(if (busy) "…" else "↑", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
             }
 
             if (showConversationHistory) {

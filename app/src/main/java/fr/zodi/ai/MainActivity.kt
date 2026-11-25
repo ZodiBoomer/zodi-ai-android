@@ -59,8 +59,8 @@ data class ChatConversation(
 
 private fun loadConversations(context: android.content.Context, prefs: android.content.SharedPreferences): List<ChatConversation> {
     val conversationFile = java.io.File(context.filesDir, "conversations.json")
-    val saved = runCatching { if (conversationFile.exists()) conversationFile.readText() else null }.getOrNull()
-        ?: prefs.getString("conversations", null)
+    val saved = prefs.getString("conversations", null)
+        ?: runCatching { if (conversationFile.exists()) conversationFile.readText() else null }.getOrNull()
     if (!conversationFile.exists() && !saved.isNullOrBlank()) {
         val migrated = runCatching { conversationFile.writeText(saved); true }.getOrDefault(false)
         if (migrated) prefs.edit().remove("conversations").apply()

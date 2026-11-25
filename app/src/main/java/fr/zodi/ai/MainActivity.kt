@@ -118,6 +118,7 @@ private fun ZodiApp() {
     var conversations by remember { mutableStateOf(loadConversations(prefs)) }
     var activeConversationId by remember { mutableStateOf(conversations.first().id) }
     var showConversationHistory by remember { mutableStateOf(false) }
+    var historyQuery by remember { mutableStateOf("") }
     val messages = conversations.firstOrNull { it.id == activeConversationId }?.messages.orEmpty()
 
     fun persist() {
@@ -347,7 +348,7 @@ private fun ZodiApp() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(
-                    onClick = { showConversationHistory = true },
+                    onClick = { historyQuery = ""; showConversationHistory = true },
                     modifier = Modifier.background(SurfaceAlt, RoundedCornerShape(12.dp)),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
@@ -471,16 +472,31 @@ private fun ZodiApp() {
                 AlertDialog(
                     onDismissRequest = { showConversationHistory = false },
                     containerColor = Surface,
-                    title = { Text("Tes conversations", color = TextMain) },
+                    title = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Tes conversations", color = TextMain)
+                            OutlinedTextField(
+                                value = historyQuery,
+                                onValueChange = { historyQuery = it },
+                                placeholder = { Text("Rechercher…") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
                     text = {
-                        if (conversations.isEmpty()) {
-                            Text("Aucune conversation enregistrée.", color = TextMuted)
+                        val filteredConversations = conversations.filter { conversation ->
+                            conversation.title.contains(historyQuery, ignoreCase = true) ||
+                                conversation.messages.any { it.content.contains(historyQuery, ignoreCase = true) }
+                        }
+                        if (filteredConversations.isEmpty()) {
+                            Text(if (conversations.isEmpty()) "Aucune conversation enregistrée." else "Aucun résultat.", color = TextMuted)
                         } else {
                             LazyColumn(
                                 modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                items(conversations, key = { it.id }) { conversation ->
+                                items(filteredConversations, key = { it.id }) { conversation ->
                                     val preview = conversation.messages.lastOrNull()?.content.orEmpty()
                                     TextButton(
                                         onClick = {

@@ -16,45 +16,36 @@ import java.net.URL
 import java.security.MessageDigest
 
 /**
- * Downloads only signed APKs published in the official public release repository.
- * Android itself remains responsible for the final package-install confirmation.
+ * Downloads only signed APKs listed in the official unified stable update index.
+ * Android remains responsible for the final package-install confirmation.
  */
 object AppUpdater {
-    private const val RELEASES_API =
-        "https://api.github.com/repos/ZodiBoomer/zodi-ai-releases-publique/releases?per_page=30"
+    private const val UPDATE_INDEX =
+        "https://raw.githubusercontent.com/ZodiBoomer/zodi-ai-releases-publique/main/latest.json"
+    private const val OFFICIAL_RELEASE_PREFIX =
+        "https://github.com/ZodiBoomer/zodi-ai-releases-publique/releases/download/"
 
     suspend fun downloadIfAvailable(context: Context): File? = withContext(Dispatchers.IO) {
-        val releases = getArray(RELEASES_API)
-        val release = (0 until releases.length())
-            .map { releases.getJSONObject(it) }
-            .firstOrNull { it.optString("tag_name").startsWith("android-v") }
-            ?: error("Aucune publication Android n'est encore disponible.")
-        val assets = release.optJSONArray("assets") ?: error("La publication ne contient aucun fichier.")
-        val manifestAsset = (0 until assets.length())
-            .map { assets.getJSONObject(it) }
-            .firstOrNull { it.optString("name") == "latest-android.json" }
-            ?: error("Le manifeste Android est absent de la dernière publication.")
+        val index = getJson(UPDATE_INDEX)
+        val platform = index.getJSONObject("platforms").getJSONObject("android-universal")
+        val version = platform.getString("version")
+        val downloadUrl = platform.getString("url")
+        val expectedSha256 = platform.getString("sha256").lowercase()
 
-        val manifest = getJson(manifestAsset.getString("browser_download_url"))
-        val version = manifest.optString("version")
-        val assetName = manifest.optString("asset")
-        val expectedSha256 = manifest.optString("sha256").lowercase()
-        require(version.isNotBlank() && assetName.isNotBlank() && expectedSha256.matches(Regex("[a-f0-9]{64}"))) {
-            "Le manifeste de mise à jour est invalide."
+        require(version.isNotBlank() && expectedSha256.matches(Regex("[a-f0-9]{64}"))) {
+            "Le manifeste de mise à jour Android est invalide."
+        }
+        require(downloadUrl.startsWith(OFFICIAL_RELEASE_PREFIX)) {
+            "L'adresse de téléchargement Android n'est pas une publication officielle."
         }
 
         @Suppress("DEPRECATION")
         val currentVersion = context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0"
         if (compareVersions(version, currentVersion) <= 0) return@withContext null
 
-        val apkAsset = (0 until assets.length())
-            .map { assets.getJSONObject(it) }
-            .firstOrNull { it.optString("name") == assetName }
-            ?: error("Le fichier APK $assetName est absent de la publication.")
-
         val directory = File(context.cacheDir, "updates").apply { mkdirs() }
         val apk = File(directory, "zodi-ai-$version.apk")
-        download(apkAsset.getString("browser_download_url"), apk)
+        download(downloadUrl, apk)
         val actualSha256 = sha256(apk)
         if (actualSha256 != expectedSha256) {
             apk.delete()
@@ -92,34 +83,20 @@ object AppUpdater {
         context.startActivity(intent)
     }
 
-    private fun getArray(address: String): org.json.JSONArray {
-        val connection = URL(address).openConnection() as HttpURLConnection
-        connection.connectTimeout = 15000
-        connection.readTimeout = 20000
-        connection.setRequestProperty("Accept", "application/vnd.github+json")
-        connection.setRequestProperty("User-Agent", "Zodi-AI-Updater")
-        return try {
-            val code = connection.responseCode
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val body = stream.bufferedReader().use { it.readText() }
-            if (code !in 200..299) error("GitHub a répondu HTTP $code.")
-            org.json.JSONArray(body)
-        } finally {
-            connection.disconnect()
-        }
-    }
-
     private fun getJson(address: String): JSONObject {
         val connection = URL(address).openConnection() as HttpURLConnection
         connection.connectTimeout = 15000
         connection.readTimeout = 20000
-        connection.setRequestProperty("Accept", "application/vnd.github+json")
+        connection.useCaches = false
+        connection.setRequestProperty("Accept", "application/json")
+        connection.setRequestProperty("Cache-Control", "no-cache")
+        connection.setRequestProperty("Pragma", "no-cache")
         connection.setRequestProperty("User-Agent", "Zodi-AI-Updater")
         return try {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val body = stream.bufferedReader().use { it.readText() }
-            if (code !in 200..299) error("GitHub a répondu HTTP $code.")
+            if (code !in 200..299) error("Le catalogue de mises à jour a répondu HTTP $code.")
             JSONObject(body)
         } finally {
             connection.disconnect()
@@ -164,5 +141,4 @@ object AppUpdater {
         }
         return 0
     }
-
 }

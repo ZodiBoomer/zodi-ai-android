@@ -242,10 +242,8 @@ private fun ZodiApp() {
     }
 
     LaunchedEffect(Unit) {
-        checkHealth()
-        refreshRemoteConfig()
-        // Check the stable release channel at startup. Android still displays
-        // its own confirmation UI; Zodi AI never installs an APK silently.
+        // Check updates before optional health/config requests so a slow API
+        // cannot delay the release check or make startup updates appear stuck.
         try {
             val updateApk = withContext(Dispatchers.IO) { AppUpdater.downloadIfAvailable(context) }
             if (updateApk != null) {
@@ -255,6 +253,8 @@ private fun ZodiApp() {
         } catch (_: Exception) {
             // Keep startup usable when offline or when no release is published.
         }
+        checkHealth()
+        refreshRemoteConfig()
         while (true) {
             delay(15 * 60 * 1000L)
             refreshRemoteConfig()
@@ -370,7 +370,7 @@ private fun ZodiApp() {
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
                     scope.launch {
-                        refreshRemoteConfig()
+                        // Show immediate feedback and do not wait for unrelated remote config.
                         status = "Recherche d'une mise à jour…"
                         try {
                             val apk = withContext(Dispatchers.IO) { AppUpdater.downloadIfAvailable(context) }

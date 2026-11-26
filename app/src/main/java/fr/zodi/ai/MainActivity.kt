@@ -124,6 +124,7 @@ private fun ZodiApp() {
     var activeConversationId by remember { mutableStateOf(conversations.first().id) }
     var showConversationHistory by remember { mutableStateOf(false) }
     var historyQuery by remember { mutableStateOf("") }
+    var pendingDeleteConversation by remember { mutableStateOf<ChatConversation?>(null) }
     val messages = conversations.firstOrNull { it.id == activeConversationId }?.messages.orEmpty()
 
     fun persist() {
@@ -161,6 +162,25 @@ private fun ZodiApp() {
         )
         conversations = listOf(conversation) + conversations
         activeConversationId = id
+        persist()
+    }
+
+    fun deleteConversation(conversation: ChatConversation) {
+        val remaining = conversations.filterNot { it.id == conversation.id }
+        if (remaining.isEmpty()) {
+            val replacement = ChatConversation(
+                id = "conversation-${System.currentTimeMillis()}",
+                title = "Nouvelle conversation",
+                updatedAt = System.currentTimeMillis(),
+                messages = listOf(ChatMessage("assistant", "Nouvelle conversation. Je t'écoute !"))
+            )
+            conversations = listOf(replacement)
+            activeConversationId = replacement.id
+        } else {
+            conversations = remaining
+            if (activeConversationId == conversation.id) activeConversationId = remaining.first().id
+        }
+        pendingDeleteConversation = null
         persist()
     }
     var input by remember { mutableStateOf("") }
@@ -571,6 +591,30 @@ private fun ZodiApp() {
                 ) { Text(if (busy) "…" else "↑", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
             }
 
+            pendingDeleteConversation?.let { conversation ->
+                AlertDialog(
+                    onDismissRequest = { pendingDeleteConversation = null },
+                    containerColor = Surface,
+                    title = { Text("Supprimer cette conversation ?", color = TextMain) },
+                    text = {
+                        Text(
+                            "« ${conversation.title} » sera supprimée de cet appareil. Cette action est définitive.",
+                            color = TextMuted
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { deleteConversation(conversation) }) {
+                            Text("Supprimer", color = Color(0xFFEF5350))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingDeleteConversation = null }) {
+                            Text("Annuler", color = TextMuted)
+                        }
+                    }
+                )
+            }
+
             if (showConversationHistory) {
                 AlertDialog(
                     onDismissRequest = { showConversationHistory = false },
@@ -601,23 +645,34 @@ private fun ZodiApp() {
                             ) {
                                 items(filteredConversations, key = { it.id }) { conversation ->
                                     val preview = conversation.messages.lastOrNull()?.content.orEmpty()
-                                    TextButton(
-                                        onClick = {
-                                            activeConversationId = conversation.id
-                                            showConversationHistory = false
-                                            input = ""
-                                        },
+                                    Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column(Modifier.fillMaxWidth()) {
-                                            Text(
-                                                conversation.title,
-                                                color = if (conversation.id == activeConversationId) Color(0xFFB8AEFF) else TextMain,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1
-                                            )
-                                            Text(preview, color = TextMuted, fontSize = 11.sp, maxLines = 2)
+                                        TextButton(
+                                            onClick = {
+                                                activeConversationId = conversation.id
+                                                showConversationHistory = false
+                                                input = ""
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                                        ) {
+                                            Column(Modifier.fillMaxWidth()) {
+                                                Text(
+                                                    conversation.title,
+                                                    color = if (conversation.id == activeConversationId) Color(0xFFB8AEFF) else TextMain,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1
+                                                )
+                                                Text(preview, color = TextMuted, fontSize = 11.sp, maxLines = 2)
+                                            }
+                                        }
+                                        TextButton(
+                                            onClick = { pendingDeleteConversation = conversation },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                                        ) {
+                                            Text("🗑", color = Color(0xFFEF5350), fontSize = 16.sp)
                                         }
                                     }
                                 }

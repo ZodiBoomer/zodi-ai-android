@@ -198,7 +198,6 @@ private fun ZodiApp() {
         }
     }
     var busy by remember { mutableStateOf(false) }
-    var messageFeedback by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
     val clipboard = remember { context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager }
     var connected by remember { mutableStateOf<Boolean?>(null) }
     var remoteConfig by remember { mutableStateOf(RemoteAppConfig()) }
@@ -517,12 +516,6 @@ private fun ZodiApp() {
                                     TextButton(onClick = { copyResponse(message.content) }, contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)) {
                                         Text("▢ Copier", color = TextMuted, fontSize = 10.sp)
                                     }
-                                    TextButton(onClick = { messageFeedback = messageFeedback + (messageIndex to if (messageFeedback[messageIndex] == "like") "" else "like") }, contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)) {
-                                        Text(if (messageFeedback[messageIndex] == "like") "👍" else "👍", color = if (messageFeedback[messageIndex] == "like") Color(0xFF4CAF50) else TextMuted, fontSize = 12.sp)
-                                    }
-                                    TextButton(onClick = { messageFeedback = messageFeedback + (messageIndex to if (messageFeedback[messageIndex] == "dislike") "" else "dislike") }, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
-                                        Text("👎", color = if (messageFeedback[messageIndex] == "dislike") Color(0xFFEF5350) else TextMuted, fontSize = 12.sp)
-                                    }
                                     TextButton(onClick = { regenerateResponse(messageIndex) }, enabled = !busy, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
                                         Text("↻", color = TextMuted, fontSize = 17.sp)
                                     }
@@ -643,13 +636,6 @@ private fun ZodiApp() {
                 )
             }
 
-            Text(
-                "Configuration distante v${remoteConfig.configVersion} · Tes conversations restent sur cet appareil. Les clés API restent sur le serveur.",
-                color = TextMuted,
-                fontSize = 10.sp,
-                lineHeight = 14.sp,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
         }
     }
 }

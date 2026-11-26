@@ -516,8 +516,6 @@ private fun ZodiApp() {
                                     TextButton(onClick = { copyResponse(message.content) }, contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)) {
                                         Text("▢ Copier", color = TextMuted, fontSize = 10.sp)
                                     }
-                                    }
-                                    }
                                     TextButton(onClick = { regenerateResponse(messageIndex) }, enabled = !busy, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
                                         Text("↻", color = TextMuted, fontSize = 17.sp)
                                     }

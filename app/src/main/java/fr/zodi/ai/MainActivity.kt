@@ -8,6 +8,8 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import java.io.File
 import android.view.View
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
@@ -16,6 +18,8 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -34,6 +38,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var filePicker: ActivityResultLauncher<Intent>
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingCameraFile: File? = null
+    private var pendingCameraUri: Uri? = null
     private val chatPreferences by lazy { getSharedPreferences("zodi_chat", Context.MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,10 +52,19 @@ class MainActivity : ComponentActivity() {
         filePicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val callback = fileChooserCallback
             fileChooserCallback = null
-            callback?.onReceiveValue(
-                if (result.resultCode == RESULT_OK) WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
-                else null
-            )
+            val cameraUri = pendingCameraUri
+            val cameraFile = pendingCameraFile
+            pendingCameraUri = null
+            pendingCameraFile = null
+            val selected = if (result.resultCode == RESULT_OK && cameraUri != null && cameraFile?.exists() == true && cameraFile.length() > 0L) {
+                arrayOf(cameraUri)
+            } else if (result.resultCode == RESULT_OK) {
+                WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+            } else {
+                cameraFile?.delete()
+                null
+            }
+            callback?.onReceiveValue(selected)
         }
 
         webView = WebView(this).apply {
@@ -85,7 +100,14 @@ class MainActivity : ComponentActivity() {
                     fileChooserCallback?.onReceiveValue(null)
                     fileChooserCallback = callback
                     return try {
-                        filePicker.launch(Intent.createChooser(params.createIntent(), "Choisir un fichier"))
+                        val captureIntent = if (params.isCaptureEnabled && params.acceptTypes.any { it.startsWith("image/") }) {
+                            createCameraCaptureIntent() ?: params.createIntent()
+                        } else {
+                            params.createIntent()
+                        }
+                        val chooserIntent = if (captureIntent.action == MediaStore.ACTION_IMAGE_CAPTURE) captureIntent
+                            else Intent.createChooser(captureIntent, "Choisir un fichier")
+                        filePicker.launch(chooserIntent)
                         true
                     } catch (_: Exception) {
                         fileChooserCallback = null
@@ -119,6 +141,21 @@ class MainActivity : ComponentActivity() {
                 // Keep the shared web interface available if release checks are offline.
             }
         }
+    }
+
+    private fun createCameraCaptureIntent(): Intent? {
+        val camera = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        if (camera.resolveActivity(packageManager) == null) return null
+        return runCatching {
+            val cameraDirectory = File(cacheDir, "camera").apply { mkdirs() }
+            val photo = File.createTempFile("zodi-camera-", ".jpg", cameraDirectory)
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", photo)
+            pendingCameraFile = photo
+            pendingCameraUri = uri
+            camera.putExtra(MediaStore.EXTRA_OUTPUT, uri)
+            camera.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            camera
+        }.getOrNull()
     }
 
     private fun routeUrl(uri: Uri): Boolean {

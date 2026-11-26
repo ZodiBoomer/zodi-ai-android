@@ -164,7 +164,6 @@ class MainActivity : ComponentActivity() {
             """
             (() => {
               const key = "$CONVERSATIONS_KEY";
-              if (localStorage.getItem(key)) return;
               try {
                 let old = JSON.parse($rawLiteral);
                 if (Array.isArray(old) && old.length && !old[0].messages && !old[0].Messages) {
@@ -184,8 +183,11 @@ class MainActivity : ComponentActivity() {
                     }))
                   }))
                 }));
-                if (normalized.length) {
-                  localStorage.setItem(key, JSON.stringify(normalized));
+                const existing = JSON.parse(localStorage.getItem(key) || "[]");
+                const known = new Set(existing.map(item => item.id));
+                const merged = [...existing, ...normalized.filter(item => !known.has(item.id))];
+                if (merged.length > existing.length) {
+                  localStorage.setItem(key, JSON.stringify(merged));
                   location.reload();
                 }
               } catch (_) {}

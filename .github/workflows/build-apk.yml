@@ -121,7 +121,7 @@ jobs:
             gh release upload "$tag" "$apk" latest-android.json --clobber --repo ZodiBoomer/zodi-ai-releases-publique
             gh release edit "$tag" --title "ZODIX Android $version" --notes "Signed Android release built from commit $COMMIT_SHA." --repo ZodiBoomer/zodi-ai-releases-publique
           else
-            gh release create "$tag" "$apk" latest-android.json --repo ZodiBoomer/zodi-ai-releases-publique --title "Zodi AI Android $version" --notes "Signed Android release built from commit $COMMIT_SHA."
+            gh release create "$tag" "$apk" latest-android.json --repo ZodiBoomer/zodi-ai-releases-publique --title "ZODIX Android $version" --notes "Signed Android release built from commit $COMMIT_SHA."
           fi
           gh api --method POST repos/ZodiBoomer/zodi-ai-releases-publique/dispatches \
             -f event_type=zodi-android-release-published \

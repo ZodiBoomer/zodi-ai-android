@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -218,6 +219,7 @@ private fun ZodiApp() {
         }
     }
     var busy by remember { mutableStateOf(false) }
+    var contextMenuIndex by remember { mutableStateOf<Int?>(null) }
     val clipboard = remember { context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager }
     var connected by remember { mutableStateOf<Boolean?>(null) }
     var remoteConfig by remember { mutableStateOf(RemoteAppConfig()) }
@@ -301,8 +303,23 @@ private fun ZodiApp() {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, content)
             }
-            context.startActivity(Intent.createChooser(intent, "Partager la réponse"))
+            context.startActivity(Intent.createChooser(intent, "Partager le message"))
         }.onFailure { status = "Partage indisponible" }
+    }
+
+    fun editUserMessage(messageIndex: Int) {
+        val message = messages.getOrNull(messageIndex) ?: return
+        if (message.role != "user" || busy) return
+        updateActiveConversation { conversation ->
+            conversation.copy(
+                updatedAt = System.currentTimeMillis(),
+                messages = conversation.messages.take(messageIndex)
+            )
+        }
+        input = message.content
+        selectedImages = message.images
+        contextMenuIndex = null
+        status = "Message prêt à modifier"
     }
 
     fun regenerateResponse(messageIndex: Int) {
@@ -519,6 +536,10 @@ private fun ZodiApp() {
                                 modifier = Modifier.fillMaxWidth()
                                     .background(if (message.role == "user") Color(0xFF263B63) else Color.Transparent, RoundedCornerShape(22.dp))
                                     .border(if (message.role == "user") 1.dp else 0.dp, if (message.role == "user") Color(0xFF3B82F6) else Color.Transparent, RoundedCornerShape(22.dp))
+                                    .then(if (message.role == "user") Modifier.combinedClickable(
+                                        onClick = {},
+                                        onLongClick = { contextMenuIndex = messageIndex }
+                                    ) else Modifier)
                                     .padding(horizontal = if (message.role == "user") 15.dp else 0.dp, vertical = if (message.role == "user") 12.dp else 4.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -530,6 +551,26 @@ private fun ZodiApp() {
                                     }
                                 }
                                 Text(message.content, color = TextMain, fontSize = 15.sp, lineHeight = 22.sp)
+                            }
+                            if (message.role == "user") {
+                                DropdownMenu(
+                                    expanded = contextMenuIndex == messageIndex,
+                                    onDismissRequest = { contextMenuIndex = null }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Copier") },
+                                        onClick = { copyResponse(message.content); contextMenuIndex = null }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Modifier le message") },
+                                        onClick = { editUserMessage(messageIndex) },
+                                        enabled = !busy
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Partager le prompt") },
+                                        onClick = { shareResponse(message.content); contextMenuIndex = null }
+                                    )
+                                }
                             }
                             if (message.role == "assistant" && messageIndex > 0) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {

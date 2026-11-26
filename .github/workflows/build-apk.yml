@@ -108,7 +108,7 @@ jobs:
           cat > latest-android.json <<EOF
           {
             "schemaVersion": 1,
-            "app": "Zodi AI",
+            "app": "ZODIX",
             "platform": "android-universal",
             "version": "$version",
             "commit": "$COMMIT_SHA",
@@ -119,7 +119,7 @@ jobs:
           tag="android-v$version"
           if gh release view "$tag" --repo ZodiBoomer/zodi-ai-releases-publique >/dev/null 2>&1; then
             gh release upload "$tag" "$apk" latest-android.json --clobber --repo ZodiBoomer/zodi-ai-releases-publique
-            gh release edit "$tag" --title "Zodi AI Android $version" --notes "Signed Android release built from commit $COMMIT_SHA." --repo ZodiBoomer/zodi-ai-releases-publique
+            gh release edit "$tag" --title "ZODIX Android $version" --notes "Signed Android release built from commit $COMMIT_SHA." --repo ZodiBoomer/zodi-ai-releases-publique
           else
             gh release create "$tag" "$apk" latest-android.json --repo ZodiBoomer/zodi-ai-releases-publique --title "Zodi AI Android $version" --notes "Signed Android release built from commit $COMMIT_SHA."
           fi

@@ -74,7 +74,9 @@ class MainActivity : ComponentActivity() {
                     routeUrl(Uri.parse(url))
             }
             webChromeClient = object : WebChromeClient() {
-                override fun onProgressChanged(view: WebView, newProgress: Int) {\n                    if (newProgress == 100) installWebCompatibilityAndMigrateHistory()\n                }
+                override fun onProgressChanged(view: WebView, newProgress: Int) {
+                    if (newProgress == 100) installWebCompatibilityAndMigrateHistory()
+                }
                 override fun onShowFileChooser(
                     view: WebView,
                     callback: ValueCallback<Array<Uri>>,

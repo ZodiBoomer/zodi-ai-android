@@ -76,7 +76,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle --no-daemon :app:assembleRelease -PversionCode=${{ github.run_number }} -PreleaseVersion=1.7.3
+        run: gradle --no-daemon :app:assembleRelease -PversionCode=${{ github.run_number }} -PreleaseVersion=1.7.5
       - name: Verify signed release APK
         shell: bash
         run: |
@@ -91,7 +91,7 @@ jobs:
         run: |
           apk="app/build/outputs/apk/release/app-release.apk"
           sha256="$(sha256sum "$apk" | awk '{print $1}')"
-          version="1.7.3"
+          version="1.7.5"
           cat > latest-android.json <<EOF
           {
             "schemaVersion": 1,

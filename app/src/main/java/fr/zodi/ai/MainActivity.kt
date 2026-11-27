@@ -165,8 +165,6 @@ class MainActivity : ComponentActivity() {
                     .setNegativeButton("Plus tard", null)
                     .setCancelable(true)
                     .show()
-            } else if (update == null) {
-                Toast.makeText(this@MainActivity, "ZODIX est déjà à jour.", Toast.LENGTH_SHORT).show()
             }
         } catch (error: Exception) {
             if (!isFinishing) {

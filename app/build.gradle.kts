@@ -20,8 +20,8 @@ android {
         applicationId = "fr.zodi.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.gradleProperty("versionCode").orElse("1").get().toInt()
-        versionName = providers.gradleProperty("releaseVersion").orElse("1.7.5.2").get()
+        versionCode = providers.gradleProperty("versionCode").orElse("1070503").get().toInt()
+        versionName = providers.gradleProperty("releaseVersion").orElse("1.7.5.3").get()
     }
 
     signingConfigs {

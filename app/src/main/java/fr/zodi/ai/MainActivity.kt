@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun checkAndPromptForUpdates() {
+    private suspend fun checkAndPromptForUpdates(manual: Boolean = false) {
         if (updateCheckInProgress || isFinishing) return
         updateCheckInProgress = true
         try {
@@ -165,6 +165,8 @@ class MainActivity : ComponentActivity() {
                     .setNegativeButton("Plus tard", null)
                     .setCancelable(true)
                     .show()
+            } else if (update == null && manual && !isFinishing) {
+                Toast.makeText(this@MainActivity, "ZODIX est déjà à jour.", Toast.LENGTH_SHORT).show()
             }
         } catch (error: Exception) {
             if (!isFinishing) {
@@ -207,7 +209,7 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun checkForUpdates() {
             runOnUiThread {
-                lifecycleScope.launch { checkAndPromptForUpdates() }
+                lifecycleScope.launch { checkAndPromptForUpdates(manual = true) }
             }
         }
 

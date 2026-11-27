@@ -160,6 +160,7 @@ class MainActivity : ComponentActivity() {
             pendingCameraFile = photo
             pendingCameraUri = uri
             camera.putExtra(MediaStore.EXTRA_OUTPUT, uri)
+            camera.clipData = ClipData.newUri(contentResolver, "ZODIX photo", uri)
             camera.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             camera
         }.getOrNull()

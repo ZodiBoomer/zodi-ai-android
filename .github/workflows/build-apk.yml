@@ -7,7 +7,7 @@ on:
     branches: [main]
     paths: ["app/**", "*.gradle.kts", "gradle.properties", ".github/workflows/build-apk.yml"]
   push:
-    branches: [main, "feat/**"]
+    branches: [main, "feat/**", "release/zodix-1.7.1-recovery"]
     paths: ["app/**", "*.gradle.kts", "gradle.properties", ".github/workflows/build-apk.yml"]
 permissions:
   contents: read
@@ -33,7 +33,7 @@ jobs:
         run: test -s app/build/outputs/apk/debug/app-debug.apk
   signed-release:
     name: Build, sign and publish production APK
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/zodix-1.7.1-recovery')) || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683

@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
             val selected = if (result.resultCode == RESULT_OK && cameraUri != null && cameraFile?.exists() == true && cameraFile.length() > 0L) {
                 arrayOf(cameraUri)
             } else if (result.resultCode == RESULT_OK) {
-                WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+                extractSelectedUris(result.data)
             } else {
                 cameraFile?.delete()
                 null
@@ -109,13 +109,22 @@ class MainActivity : ComponentActivity() {
                     fileChooserCallback?.onReceiveValue(null)
                     fileChooserCallback = callback
                     return try {
-                        val captureIntent = if (params.isCaptureEnabled && params.acceptTypes.any { it.startsWith("image/") }) {
-                            createCameraCaptureIntent() ?: params.createIntent()
+                        val acceptsImages = params.acceptTypes.any {
+                            it.trim().lowercase().let { type -> type.startsWith("image/") || type == "image" }
+                        }
+                        val captureIntent = if (params.isCaptureEnabled && acceptsImages) {
+                            createCameraCaptureIntent() ?: createImagePickerIntent(params)
+                        } else if (acceptsImages) {
+                            createImagePickerIntent(params)
                         } else {
                             params.createIntent()
                         }
-                        val chooserIntent = if (captureIntent.action == MediaStore.ACTION_IMAGE_CAPTURE) captureIntent
-                            else Intent.createChooser(captureIntent, "Choisir un fichier")
+                        val chooserIntent = if (captureIntent.action == MediaStore.ACTION_IMAGE_CAPTURE) {
+                            captureIntent
+                        } else {
+                            Intent.createChooser(captureIntent, if (acceptsImages) "Choisir une photo" else "Choisir un fichier")
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
                         filePicker.launch(chooserIntent)
                         true
                     } catch (_: Exception) {
@@ -155,7 +164,7 @@ class MainActivity : ComponentActivity() {
             if (update != null && !isFinishing) {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Mise à jour ZODIX disponible")
-                    .setMessage("La version 1.7.5.3 est téléchargée et vérifiée. Veux-tu l'installer maintenant ?")
+                    .setMessage("La version 1.7.5.4 est téléchargée et vérifiée. Veux-tu l'installer maintenant ?")
                     .setPositiveButton("Installer") { _, _ ->
                         runCatching { AppUpdater.install(this@MainActivity, update) }
                             .onFailure {
@@ -179,6 +188,35 @@ class MainActivity : ComponentActivity() {
         } finally {
             updateCheckInProgress = false
         }
+    }
+
+    /**
+     * Use Android's image document picker explicitly instead of WebView's generic
+     * createIntent(), which can return a provider-specific intent with no usable URI
+     * on some Android photo-picker implementations.
+     */
+    private fun createImagePickerIntent(params: WebChromeClient.FileChooserParams): Intent {
+        return Intent(Intent.ACTION_GET_CONTENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            }
+        }
+    }
+
+    /** Collect both the single-result URI and ClipData results returned by gallery apps. */
+    private fun extractSelectedUris(data: Intent?): Array<Uri>? {
+        if (data == null) return null
+        val uris = linkedSetOf<Uri>()
+        data.data?.let { uris.add(it) }
+        data.clipData?.let { clip ->
+            for (index in 0 until clip.itemCount) {
+                clip.getItemAt(index).uri?.let { uris.add(it) }
+            }
+        }
+        return uris.takeIf { it.isNotEmpty() }?.toTypedArray()
     }
 
     private fun createCameraCaptureIntent(): Intent? {

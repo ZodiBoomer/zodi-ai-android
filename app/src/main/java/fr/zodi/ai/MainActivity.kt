@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var pendingCameraFile: File? = null
     private var pendingCameraUri: Uri? = null
+    private var updateCheckInProgress = false
     private val chatPreferences by lazy { getSharedPreferences("zodi_chat", Context.MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -142,31 +143,41 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             delay(1800)
-            try {
-                val update = AppUpdater.downloadIfAvailable(this@MainActivity)
-                if (update != null && !isFinishing) {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Mise à jour ZODIX disponible")
-                        .setMessage("La version 1.7.5.3 est téléchargée et vérifiée. Veux-tu l'installer maintenant ?")
-                        .setPositiveButton("Installer") { _, _ ->
-                            runCatching { AppUpdater.install(this@MainActivity, update) }
-                                .onFailure {
-                                    Toast.makeText(this@MainActivity, "Installation impossible : ${it.message}", Toast.LENGTH_LONG).show()
-                                }
-                        }
-                        .setNegativeButton("Plus tard", null)
-                        .setCancelable(true)
-                        .show()
-                }
-            } catch (error: Exception) {
-                if (!isFinishing) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Vérification des mises à jour impossible : ${error.message ?: "erreur réseau"}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+            checkAndPromptForUpdates()
+        }
+    }
+
+    private suspend fun checkAndPromptForUpdates() {
+        if (updateCheckInProgress || isFinishing) return
+        updateCheckInProgress = true
+        try {
+            val update = AppUpdater.downloadIfAvailable(this@MainActivity)
+            if (update != null && !isFinishing) {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Mise à jour ZODIX disponible")
+                    .setMessage("La version 1.7.5.3 est téléchargée et vérifiée. Veux-tu l'installer maintenant ?")
+                    .setPositiveButton("Installer") { _, _ ->
+                        runCatching { AppUpdater.install(this@MainActivity, update) }
+                            .onFailure {
+                                Toast.makeText(this@MainActivity, "Installation impossible : ${it.message}", Toast.LENGTH_LONG).show()
+                            }
+                    }
+                    .setNegativeButton("Plus tard", null)
+                    .setCancelable(true)
+                    .show()
+            } else if (update == null) {
+                Toast.makeText(this@MainActivity, "ZODIX est déjà à jour.", Toast.LENGTH_SHORT).show()
             }
+        } catch (error: Exception) {
+            if (!isFinishing) {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Vérification des mises à jour impossible : ${error.message ?: "erreur réseau"}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        } finally {
+            updateCheckInProgress = false
         }
     }
 
@@ -195,6 +206,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private inner class NativeBridge {
+        @JavascriptInterface
+        fun checkForUpdates() {
+            runOnUiThread {
+                lifecycleScope.launch { checkAndPromptForUpdates() }
+            }
+        }
+
         @JavascriptInterface
         fun shareText(text: String) {
             runOnUiThread {

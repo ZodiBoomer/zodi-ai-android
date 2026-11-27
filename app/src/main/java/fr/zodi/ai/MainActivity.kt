@@ -73,6 +73,13 @@ class MainActivity : ComponentActivity() {
             isVerticalScrollBarEnabled = true
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            // Respect the device-width viewport and let the shared responsive UI control layout.
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = false
+            settings.setSupportZoom(false)
+            settings.builtInZoomControls = false
+            settings.displayZoomControls = false
+            settings.textZoom = 100
             settings.databaseEnabled = true
             settings.allowFileAccess = false
             settings.allowContentAccess = true

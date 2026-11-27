@@ -1,3 +1,4 @@
+// ZODIX 1.7.5.1 signed-release trigger
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")

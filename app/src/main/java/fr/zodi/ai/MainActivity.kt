@@ -1,6 +1,7 @@
 package fr.zodi.ai
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -143,9 +144,28 @@ class MainActivity : ComponentActivity() {
             delay(1800)
             try {
                 val update = AppUpdater.downloadIfAvailable(this@MainActivity)
-                if (update != null) AppUpdater.install(this@MainActivity, update)
-            } catch (_: Exception) {
-                // Keep the shared web interface available if release checks are offline.
+                if (update != null && !isFinishing) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Mise à jour ZODIX disponible")
+                        .setMessage("La version 1.7.5.3 est téléchargée et vérifiée. Veux-tu l'installer maintenant ?")
+                        .setPositiveButton("Installer") { _, _ ->
+                            runCatching { AppUpdater.install(this@MainActivity, update) }
+                                .onFailure {
+                                    Toast.makeText(this@MainActivity, "Installation impossible : ${it.message}", Toast.LENGTH_LONG).show()
+                                }
+                        }
+                        .setNegativeButton("Plus tard", null)
+                        .setCancelable(true)
+                        .show()
+                }
+            } catch (error: Exception) {
+                if (!isFinishing) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Vérification des mises à jour impossible : ${error.message ?: "erreur réseau"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
     }
